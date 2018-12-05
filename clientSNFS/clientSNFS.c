@@ -15,7 +15,8 @@ int main(int argc, char **argv)
     int read_ret;
     struct sockaddr_in serv_addr;
 
-    char *hello = "20,Hello from client";
+
+    char *hello = "6,open";
     char buffer[1024] = {0};
 
     int tmp_ret;

@@ -86,9 +86,84 @@ void *client_handler(void *arg)
             buffer = strcat_dynamic(buffer, partial_buffer);
         }
         printf("Command: %s\n", buffer);
-    }
 
-    printf("read() failed");
+        // Now that we have the whole command string, we can parse it to find
+        // the operation type.
+
+        /*
+         * create
+         * opendir
+         * readdir
+         * releasedir
+         * mkdir
+         */
+
+        char *size = strtok(buffer, ",");
+        char *op_type = strtok(NULL, ",");
+
+        if (strcmp(op_type, "getattr") == 0) {
+            // getattr() has one additional argument: the filepath.
+            printf("Got a getattr request\n");
+
+        } else if (strcmp(op_type, "truncate") == 0) {
+            // truncate() has two additional arguments: the filepath and 
+            // the number of bytes to set the file size to.
+            printf("Got a truncate request\n");
+
+        } else if (strcmp(op_type, "open") == 0) {
+            // open() has three additional arguments: the filepath, the mode
+            // we are opening the file in, and the permissions for the file,
+            // which we only use if the file has to be created.
+            printf("Got an open request\n");
+
+        } else if (strcmp(op_type, "read") == 0) {
+            // read() has three additional arguments: the filepath, the number 
+            // of bytes to read, and the offset from the beginning of the file
+            // where we should start reading from.
+            printf("Got a read request\n");
+
+        } else if (strcmp(op_type, "write") == 0) {
+            // write() has four additional arguments: the filepath, the buffer 
+            // to write, the number of bytes to write from the buffer, and the
+            // offset from the beginning of the file to write to.
+            printf("Got a write request\n");
+        
+        } else if (strcmp(op_type, "flush") == 0) {
+            // flush() takes one additional argument: the filepath.
+            printf("Got a flush request\n");
+
+        } else if (strcmp(op_type, "release") == 0) {
+            // release() takes one additional argument: the filepath.
+            printf("Got a release request\n");
+        
+        } else if (strcmp(op_type, "create") == 0) {
+            // create() takes two additional arguments: the filepath, and the 
+            // mode to open the file in.
+            printf("Got a create request\n");
+        
+        } else if (strcmp(op_type, "mkdir") == 0) {
+            // mkdir() takes two additional arguments: the directory name, and 
+            // the permissions to open the directory in.
+            printf("Got a mkdir request\n");
+
+        } else if (strcmp(op_type, "opendir") == 0) {
+            // opendir() takes one additional argument: the directory name.
+            printf("Got an opendir request\n");
+        
+        } else if (strcmp(op_type, "readdir") == 0) {
+            // Not sure what extra arguments need to get passed in here.
+            printf("Got a readdir request\n");
+        
+        } else if (strcmp(op_type, "releasedir") == 0) {
+            // releasedir() takes one additional argument: the directory name.
+            printf("Got a releasedir request\n");
+
+        } else {
+            // Unrecognized command. Handle the error.
+            printf("Unrecognized request\n");
+        }
+
+    }
 
     return NULL;
 }
