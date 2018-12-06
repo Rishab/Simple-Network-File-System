@@ -4,8 +4,10 @@
 #include <string.h>
 #include <ctype.h>
 #include <pthread.h>
+#include <errno.h>
 
 #include <sys/types.h>
+#include <sys/stat.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 
@@ -90,20 +92,25 @@ void *client_handler(void *arg)
         // Now that we have the whole command string, we can parse it to find
         // the operation type.
 
-        /*
-         * create
-         * opendir
-         * readdir
-         * releasedir
-         * mkdir
-         */
-
         char *size = strtok(buffer, ",");
         char *op_type = strtok(NULL, ",");
 
         if (strcmp(op_type, "getattr") == 0) {
             // getattr() has one additional argument: the filepath.
             printf("Got a getattr request\n");
+            char *path = strtok(NULL, ",");
+            printf("Path: %s\n", path); 
+            struct stat stats;
+            int ret = stat(path, &stats);
+            
+            if (ret != 0) {
+                perror("error in stat");
+            }
+
+            char *ret_str = (char *) malloc(sizeof(int) * 10);
+            memset(ret_str, 0, 10);
+            snprintf(ret_str, 10, "%d", ret);
+            write(client_fd, ret_str, 10);
 
         } else if (strcmp(op_type, "truncate") == 0) {
             // truncate() has two additional arguments: the filepath and 
