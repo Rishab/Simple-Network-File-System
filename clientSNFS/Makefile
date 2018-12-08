@@ -1,5 +1,5 @@
 CC := gcc
-CFLAGS := -g -Wall
+CFLAGS := -g -Wall -D_FILE_OFFSET_BITS=64
 
 all: clientSNFS
 
