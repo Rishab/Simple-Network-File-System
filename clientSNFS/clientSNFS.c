@@ -182,6 +182,29 @@ static int snfs_create(const char * path, mode_t filemodes, struct fuse_file_inf
 }
 
 static int snfs_mkdir(const char * path, mode_t dirmode) {
+	int msg_size = strlen(path) + sizeof(mode_t) + 60;
+    	char *message = (char *) malloc(sizeof(char) * msg_size);
+    	memset(message, 0, msg_size);
+	snprintf(message, msg_size, "%d,mkdir,%s,%d", msg_size, path, (int) dirmode);
+    	write(server_fd, message, msg_size);
+
+    	char *result = (char *) malloc(sizeof(char) * 20);
+    	memset(result, 0, 20);
+    	read(server_fd, result, 20);
+
+	int server_return_code = atoi(result);
+    	if (server_return_code < 0) {
+        	perror("Server error on write\n");
+        	return server_return_code;
+    	}
+
+	//write on server was successful; write on client
+	int client_return_code = mkdir(path, dirmode);
+	
+	if (client_return_code < 0) {
+        	printf("WARNING: Consistency error on mkdir. Success on server but failure on client\n");
+    	}
+	
 	return 0;
 }
 
@@ -225,6 +248,30 @@ static int snfs_readdir(const char * path, void * buffer,
 }
 
 static int snfs_releasedir(const char * path, struct fuse_file_info * fi) {
+
+	int msg_size = strlen(path) + 60;
+    	char *message = (char *) malloc(sizeof(char) * msg_size);
+    	memset(message, 0, msg_size);
+	snprintf(message, msg_size, "%d,releasedir,%s", msg_size, path);
+    	write(server_fd, message, msg_size);
+
+    	char *result = (char *) malloc(sizeof(char) * 20);
+    	memset(result, 0, 20);
+    	read(server_fd, result, 20);
+
+	int server_return_code = atoi(result);
+    	if (server_return_code < 0) {
+        	perror("Server error on releasedir\n");
+        	return server_return_code;
+    	}
+
+	//releasedir on server was successful; releasedir (rmdir) on client
+	int client_return_code = rmdir(path);
+	
+	if (client_return_code < 0) {
+        	printf("WARNING: Consistency error on releasedir. Success on server but failure on client\n");
+    	}
+	
 	return 0;
 }
 

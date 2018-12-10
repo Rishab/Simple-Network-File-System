@@ -228,6 +228,17 @@ void *client_handler(void *arg)
 			// the permissions to open the directory in.
 			printf("Got a mkdir request\n");
 
+			char* path = strtok(NULL, ",");
+			int dirmode = atoi(strtok(NULL, ","));
+			printf("path: %s\ndirmode: %04o\n", path, dirmode);
+
+			int return_code = mkdir(path, dirmode);
+
+			char *ret_str = ((char *) malloc(20);
+			memset(ret_str, 0, 20);
+			snprintf(ret_str, 20, "%d", return_code);
+			write(client_fd, ret_str, 20);
+
 		} else if (strcmp(op_type, "opendir") == 0) {
 			// opendir() takes one additional argument: the directory name.
 			printf("Got an opendir request\n");
@@ -264,6 +275,16 @@ void *client_handler(void *arg)
 		} else if (strcmp(op_type, "releasedir") == 0) {
 			// releasedir() takes one additional argument: the directory name.
 			printf("Got a releasedir request\n");
+
+			char* path = strtok(NULL, ",");
+			printf("path: %s\n", path);
+
+			int return_code = rmdir(path);
+
+			char *ret_str = ((char*) malloc(20));
+			memset(ret_str, 0, 20);
+			snprintf(ret_str, 20, "%d", return_code);
+			write(client_fd, ret_str, 20);
 
 		} else {
 			// Unrecognized command. Handle the error.
