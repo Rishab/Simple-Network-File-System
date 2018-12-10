@@ -54,17 +54,119 @@ static int snfs_truncate(const char * path, off_t length,
 
 }
 static int snfs_open(const char * path, struct fuse_file_info * fi) {
+    printf("Open function called by user\n");
+    int size = strlen(path) + 30;
+    char *message = (char *) malloc(sizeof(char) * size);
+    memset(message, 0, size);
+    snprintf(message, size, "%d,open,%s", size, path);
+    write(server_fd, message, size);
 
+    char *result = (char *) malloc(sizeof(char) * 30);
+    memset(result, 0, 30);
+    read(server_fd, result, 30);
+    printf("Open result: %s\n", result);
+
+    int server_return = atoi(result);
+
+    if (server_return < 0) {
+        perror("Server error on open\n");
+        return server_return;
+    }
+    
+    int fd = open(path, fi->flags);
+    
+    if (fd < 0) {
+        perror("Client error on open\n");
+        return fd;
+    }
+    fi->fh = fd;
 	return 0;
 }
 
 static int snfs_read(const char * path, char * buffer, size_t size, off_t offset, struct fuse_file_info * fi) 
+{
+    printf("Read functionn called by user\n");
+    int msg_size = strlen(path) + 60;
+    char *message = (char *) malloc(sizeof(char) * msg_size);
+    memset(message, 0, msg_size);
+    snprintf(message, size, "%d,read,%s,%d,%d", msg_size, path, (int) size, (int) offset);
+    write(server_fd, message, msg_size);
 
-	return 0;
+    char *result = (char *) malloc(sizeof(char) * (size + 20));
+    memset(result, 0, size + 20);
+    read(server_fd, result, size+20);
+
+    char *result_code_str = strtok(result, ",");
+    char *read_buffer = strtok(NULL, ",");
+
+    int result_code = atoi(result_code_str);
+    if (result_code < 0) {
+        perror("Server error on read\n");
+        return result_code;
+    }
+    
+    int fd;
+
+    if (fi == NULL) {
+        fd = open(path, fi->flags);
+    } else {
+        fd = fi->fh;
+    }
+
+    int client_result = pread(fd, buffer, size, offset);
+    if (client_result < 0) {
+        perror("Client error on read\n");
+        return client_result;
+    }
+
+    if (strcmp(buffer, read_buffer) != 0) {
+        printf("WARNING: the read operation succeeded, but there is a consistency error between client and server. Data may not match up on future operations.\n");
+    }
+    
+    if (fi == NULL) {
+        close(fd);
+    }
+
+	return client_result;
 }
 
-static int snfs_write(const char * path, const char * buffer, size_t size, off_t offset, struct fuse_file_info * fi) {
-	return 0;
+static int snfs_write(const char * path, const char * buffer, size_t size, off_t offset, struct fuse_file_info * fi)
+{
+    int msg_size = strlen(path) + size + 60;
+    char *message = (char *) malloc(sizeof(char) * msg_size);
+    memset(message, 0, msg_size);
+    snprintf(message, msg_size, "%d,write,%s,%s,%d,%d", msg_size, path, buffer, (int) size, (int) offset);
+    write(server_fd, message, msg_size);
+
+    char *result = (char *) malloc(sizeof(char) * 20);
+    memset(result, 0, 20);
+    read(server_fd, result, 20);
+    
+    int server_return_code = atoi(result);
+    if (server_return_code < 0) {
+        perror("Server error on write\n");
+        return server_return_code;
+    }
+
+    int fd;
+
+    if (fi == NULL) {
+        fd = open(path, fi->flags);
+    } else {
+        fd = fi->fh;
+    }
+
+    int client_return_code = pwrite(fd, buffer, size, offset);
+    
+    if (fi == NULL) {
+        close(fd);
+    }
+    
+    if (client_return_code != server_return_code) {
+        printf("WARNING: Consistency error on write. Data may not be what you expect it to be in the future\n");
+    }
+
+    return client_return_code;
 } 
 
 static int snfs_flush(const char * path, struct fuse_file_info * fi) {
