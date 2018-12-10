@@ -6,6 +6,7 @@
 #include <pthread.h>
 #include <errno.h>
 #include <dirent.h>
+#include <fcntl.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -197,6 +198,20 @@ void *client_handler(void *arg)
 			// we are opening the file in, and the permissions for the file,
 			// which we only use if the file has to be created.
 			printf("Got an open request\n");
+            char *open_path = strtok(NULL, ",");
+            char *open_flags = strtok(NULL, ",");
+            printf("Open path: %s\n", open_path);
+            printf("Open flags: %s\n", open_flags);
+
+            int flags = atoi(open_flags);
+
+            int fd = open(open_path, flags);
+            printf("Open result: %d\n", fd);
+
+            char *result = (char *) malloc(sizeof(char) * 30);
+            memset(result, 0, 30);
+            snprintf(result, 30, "%d", fd);
+            write(client_fd, result, 30);
 
 		} else if (strcmp(op_type, "read") == 0) {
 			// read() has three additional arguments: the filepath, the number
@@ -204,12 +219,57 @@ void *client_handler(void *arg)
 			// where we should start reading from.
 			printf("Got a read request\n");
 
-		} else if (strcmp(op_type, "write") == 0) {
-			// write() has four additional arguments: the filepath, the buffer
+            char *read_path = strtok(NULL, ",");
+            char *size_str = strtok(NULL, ",");
+            char *offset_str = strtok(NULL, ",");
+            
+            int size = atoi(size_str);
+            int offset = atoi(offset_str);
+
+            char *buffer = (char *) malloc(sizeof(char) * (size + 1));
+            memset(buffer, 0, size + 1);
+            
+            int fd = open(read_path, O_RDWR);
+            if (fd < 0) {
+                char *result = (char *) malloc(sizeof(char) * (size + 20));
+                memset(result, 0, size + 20);
+                snprintf(result, size + 20, "%d", fd);
+                write(client_fd, result, size + 20);
+            } else {
+                int read_res = pread(fd, buffer, size, offset);
+                char *result = (char *) malloc(sizeof(char) * (size + 20));
+                memset(result, 0, size + 20);
+                snprintf(result, size + 20, "%d,%s", size + 20, buffer);
+                write(client_fd, result, size + 20);
+            }
+
+        } else if (strcmp(op_type, "write") == 0) { 
+            // write() has four additional arguments: the filepath, the buffer
 			// to write, the number of bytes to write from the buffer, and the
 			// offset from the beginning of the file to write to.
 			printf("Got a write request\n");
 
+            char *write_path = strtok(NULL, ",");
+            char *buffer = strtok(NULL, ",");
+            char *size_str = strtok(NULL, ",");
+            char *offset_str = strtok(NULL, ",");
+            
+            int size = atoi(size_str);
+            int offset = atoi(offset_str);
+            
+            int fd = open(write_path, O_RDWR);
+            if (fd < 0) {
+                char *result = (char *) malloc(sizeof(char) * (size + 20));
+                memset(result, 0, size + 20);
+                snprintf(result, size + 20, "%d", fd);
+                write(client_fd, result, size + 20);
+            } else {
+                int write_result = pwrite(fd, buffer, size, offset);
+                char *result = (char *) malloc(sizeof(char) * 20);
+                memset(result, 0, 20);
+                snprintf(result, 20, "%d", write_result);
+                write(client_fd, result, 20);
+            }
 		} else if (strcmp(op_type, "flush") == 0) {
 			// flush() takes one additional argument: the filepath.
 			printf("Got a flush request\n");
