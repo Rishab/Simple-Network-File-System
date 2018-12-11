@@ -4,6 +4,7 @@
 #include <string.h>
 #include <fuse.h>
 #include <netdb.h>
+#include <dirent.h>
 
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -14,8 +15,7 @@ int server_fd = 0;
 int port = 0;
 
 static int snfs_getattr(const char *path, struct stat *fstats,
-		struct fuse_file_info *fi)
-{
+		struct fuse_file_info *fi) {
 	int size = strlen(path) + 30;
 	char *message = (char *) malloc(sizeof(char) * (strlen(path) + 30));
 	memset(message, 0, strlen(path) + 30);
@@ -172,6 +172,7 @@ static int snfs_write(const char * path, const char * buffer, size_t size, off_t
 } 
 
 static int snfs_flush(const char * path, struct fuse_file_info * fi) {
+	//called on each close; write back data and return errors
 	return 0;
 }
 
@@ -185,10 +186,10 @@ static int snfs_create(const char * path, mode_t filemodes, struct fuse_file_inf
 
 static int snfs_mkdir(const char * path, mode_t dirmode) {
 	int msg_size = strlen(path) + sizeof(mode_t) + 60;
-    	char *message = (char *) malloc(sizeof(char) * msg_size);
-    	memset(message, 0, msg_size);
+    char *message = (char *) malloc(sizeof(char) * msg_size);
+    memset(message, 0, msg_size);
 	snprintf(message, msg_size, "%d,mkdir,%s,%d", msg_size, path, (int) dirmode);
-    	write(server_fd, message, msg_size);
+    write(server_fd, message, msg_size);
 
     	char *result = (char *) malloc(sizeof(char) * 20);
     	memset(result, 0, 20);
@@ -239,13 +240,29 @@ static int snfs_readdir(const char * path, void * buffer,
 	char *result = (char *) malloc(sizeof(char) * 100);
 	memset(result, 0, 100);
 	read(server_fd, result, 100);
-	printf("String returned from the server: %s\n", result);
-	printf("Files returned from the server\n");
+	int server_return_code = atoi(result);
 	
-	char * current_token = strtok(result, ",");
-	while ((current_token = strtok(NULL, ",")) != NULL) {
-		printf("%s\n", current_token);
+	if (server_return_code < 0) {
+		printf("The server was unable to read the directory\n");
 	}
+	
+	else {
+		DIR * dir = opendir(path);
+		struct dirent * dp;
+		
+		if (dir == NULL) {
+   			perror("The directory does not exist or cannot be opened at this time\n");
+   			//snprintf(ret_str, 10, "%d", -1);
+    		//write(client_fd, ret_str, 10);
+    	}
+
+		else if (strcmp( path, "/" ) == 0) {
+				while ((dp = readdir(dir) != NULL)) {
+					filler(buffer, dp->d_name, NULL, 0);
+				}
+		} 
+	}
+	
 	return 0;
 }
 
@@ -276,7 +293,13 @@ static int snfs_releasedir(const char * path, struct fuse_file_info * fi) {
 	
 	return 0;
 }
-
+/*
+static struct fuse_operations operations = {
+    .getattr	= snfs_getattr,
+    .readdir	= snfs_readdir,
+    .read	= snfs_read,
+};
+*/
 int main(int argc, char **argv)
 {
 	//check to see if the correct number of arguments are passed in
@@ -366,6 +389,8 @@ int main(int argc, char **argv)
 	//snfs_truncate("./mk1483.txt\0", 10, NULL);
 
 	//snfs_readdir("./tmp", NULL, 0, NULL, NULL);
-	snfs_opendir("./tmp", NULL);
+	//snfs_opendir("./tmp", NULL);
+	
+	snfs_open("./tmp/os.txt", NULL);
 	return 0;
 }

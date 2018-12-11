@@ -13,12 +13,13 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 
-#define PORT 54321
 #define BUF_SIZE 10
 
 /* For Mohit: not the best way of finding the number of files and directories. I will figure
  * out a better way soon
  */
+ 
+int port = 0;
 int num_files = 0;
 int num_directories = 0;
 
@@ -65,7 +66,7 @@ DIR * opendir_handler(char * file_path) {
 	
 	return dir;
 }
-
+/*
 int readdir_handle_length(char * file_path) {
 	DIR * dir = opendir_handler(file_path);
 	struct dirent * dp;
@@ -110,6 +111,7 @@ char * readdir_handle_string(char * file_path, int stream_length, int num_files)
 	
 	return files;
 }
+*/
 
 /*
  * Thread handler for a client's connection. Handles all requests for a client
@@ -118,8 +120,8 @@ char * readdir_handle_string(char * file_path, int stream_length, int num_files)
  */
 void *client_handler(void *arg)
 {
-	int client_fd = *((int *) arg);
-	char *buffer = (char *) malloc(sizeof(char) * BUF_SIZE);
+	int client_fd = *((int *) arg); //client file descriptor for socket
+	char *buffer = (char *) malloc(sizeof(char) * BUF_SIZE); //buffer to hold client message 
 	char *partial_buffer = NULL;
 
 	int read_len = read(client_fd, buffer, BUF_SIZE);
@@ -127,6 +129,7 @@ void *client_handler(void *arg)
 	int i = 0, j = 0;
 	int num_bytes = 0;
 
+	// parse the message sent by the client.
 	if (read_len > 0) {
 		while (isdigit(buffer[i])) {
 			i++;
@@ -158,8 +161,12 @@ void *client_handler(void *arg)
 		char *size = strtok(buffer, ",");
 		char *op_type = strtok(NULL, ",");
 
+		/* 
+			Similar to stat(). Getattr retrieves the status of the file in the given file path.
+			Returns 0 if successful and -1 if failed.
+			Protocol: <number of bytes to read>,<getattr>,<path to file>
+		*/
 		if (strcmp(op_type, "getattr") == 0) {
-			// getattr() has one additional argument: the filepath.
 			printf("Got a getattr request\n");
 			char *path = strtok(NULL, ",");
 			printf("Path: %s\n", path);
@@ -175,9 +182,15 @@ void *client_handler(void *arg)
 			snprintf(ret_str, 10, "%d", ret);
 			write(client_fd, ret_str, 10);
 
-		} else if (strcmp(op_type, "truncate") == 0) {
-			// truncate() has two additional arguments: the filepath and
-			// the number of bytes to set the file size to.
+		} 
+		
+		/* 
+			Truncate will reduce or expand the file to th specified number of bytes.
+			If the file is larger than the specified bytes, then data is lost.
+			Returns 0 if successful and -1 if failed.   
+			Protocol: <number of bytes to read>,<getattr>,<path to file>
+		*/
+		else if (strcmp(op_type, "truncate") == 0) {
 			printf("Got a truncate request\n");
 			char *path = strtok(NULL, ",");
 			printf("Truncate File Path: %s\n", path);
@@ -193,10 +206,16 @@ void *client_handler(void *arg)
 			snprintf(result_str, 10, "%d", result);
 			write(client_fd, result_str, 10);
 
-		} else if (strcmp(op_type, "open") == 0) {
-			// open() has three additional arguments: the filepath, the mode
-			// we are opening the file in, and the permissions for the file,
-			// which we only use if the file has to be created.
+		} 
+		
+		/*
+			Open will open a file. If the file does not already exist, it will create it first.
+			The file is opened with the permissions specified (mode and permissions) 
+			and at the path given.
+			If successful, open returns the file descriptor of the opened file. Else, -1.
+			Protocol: <number of bytes to read>,<open>,<path>,<flags>
+		*/
+		else if (strcmp(op_type, "open") == 0) {
 			printf("Got an open request\n");
             char *open_path = strtok(NULL, ",");
             char *open_flags = strtok(NULL, ",");
@@ -213,7 +232,16 @@ void *client_handler(void *arg)
             snprintf(result, 30, "%d", fd);
             write(client_fd, result, 30);
 
-		} else if (strcmp(op_type, "read") == 0) {
+		} 
+		
+		/*
+			Read will read the number of bytes requested by the client and store it in a buffer.
+			Read has three additional arguments: the filepath, the number of bytes to read, and
+			the offset from the beginning of the file.
+			If successful, read will return the number of bytes read back to the client. Else, -1.
+			Protocol: <number of bytes in the buffer>,<
+		*/
+		else if (strcmp(op_type, "read") == 0) {
 			// read() has three additional arguments: the filepath, the number
 			// of bytes to read, and the offset from the beginning of the file
 			// where we should start reading from.
@@ -273,15 +301,48 @@ void *client_handler(void *arg)
 		} else if (strcmp(op_type, "flush") == 0) {
 			// flush() takes one additional argument: the filepath.
 			printf("Got a flush request\n");
+			char * flush_path = strtok(NULL, ",");
+			printf("Path: %s\n", flush_path);
+			
+			int return_code = fflush(flush_path);
+			
+			char *ret_str = ((char *) malloc(20));
+			memset(ret_str, 0, 20);
+			snprintf(ret_str, 20, "%d", return_code);
+			write(client_fd, ret_str, 20);
 
 		} else if (strcmp(op_type, "release") == 0) {
 			// release() takes one additional argument: the filepath.
 			printf("Got a release request\n");
+			char * release_path = strtok(NULL, ",");
+			printf("Path: %s\n", release_path);
+			
+			int return_code = remove(release_path);
+			
+			char *ret_str = ((char *) malloc(20));
+			memset(ret_str, 0, 20);
+			snprintf(ret_str, 20, "%d", return_code);
+			write(client_fd, ret_str, 20);
 
 		} else if (strcmp(op_type, "create") == 0) {
 			// create() takes two additional arguments: the filepath, and the
 			// mode to open the file in.
 			printf("Got a create request\n");
+            char * create_path = strtok(NULL, ",");
+            char * create_flags = strtok(NULL, ",");
+            printf("Create path: %s\n", create_path);
+            printf("Create flags: %s\n", create_flags);
+
+            int flags = atoi(create_flags);
+
+            int fd = open(create_path, create_flags);
+            printf("Create result: %d\n", fd);
+
+            char *result = (char *) malloc(sizeof(char) * 30);
+            memset(result, 0, 30);
+            snprintf(result, 30, "%d", fd);
+            write(client_fd, result, 30);
+
 
 		} else if (strcmp(op_type, "mkdir") == 0) {
 			// mkdir() takes two additional arguments: the directory name, and
@@ -294,7 +355,7 @@ void *client_handler(void *arg)
 
 			int return_code = mkdir(path, dirmode);
 
-			char *ret_str = ((char *) malloc(20);
+			char *ret_str = ((char *) malloc(20));
 			memset(ret_str, 0, 20);
 			snprintf(ret_str, 20, "%d", return_code);
 			write(client_fd, ret_str, 20);
@@ -307,30 +368,49 @@ void *client_handler(void *arg)
 					
 			DIR * result = opendir_handler(path);
 			
+			char *ret_str = (char *) malloc(sizeof(int) * 10);
+			memset(ret_str, 0, 10);
+			
 			if (result == NULL) {
 				perror("opendir did not open properly\n");
+				snprintf(ret_str, 10, "%d", 0);
+				write(client_fd, ret_str, 10);
 			}
-			
-			/* Sends back a DIR pointer to the client */
-			write(client_fd, result, sizeof(result));
+			else {
+				snprintf(ret_str, 10, "%d", -1);
+				write(client_fd, ret_str, 10);
+			}
 
 		} else if (strcmp(op_type, "readdir") == 0) {
 			printf("Got a readdir request\n");	
 			char * path = strtok(NULL, ",");
     		printf("Path: %s\n", path);
-    		int stream_length = readdir_handle_length(path);
-    		printf("Server Readdir: The number of files in the directory are: %d and the length of the stream is: %d\n", num_files, stream_length);
     		
-    		int result_str_length = stream_length + num_files;
-    		char * files = (char *) malloc(sizeof(char) * result_str_length);
-    		files = readdir_handle_string(path, stream_length, num_files);
+    		char * ret_str = (char *) malloc(sizeof(char) * 10);
     		
-    		printf("The length of the resulting string is: %d, %s\n", result_str_length, files);
-    		char * result_str = (char *) malloc (sizeof(int) * (result_str_length));
-			memset(result_str, 0, result_str_length);
-			snprintf(result_str, result_str_length + 10, "%d,%s", stream_length, files);
-    		write(client_fd, result_str, result_str_length + 10);
+    		//try to open the file path
+    		DIR * dir = opendir_handler(path);
+    		//write back null if not possible to read because the path is not opened
+    		if (dir == NULL) {
+    			perror("The directory does not exist or cannot be opened at this time\n");
+    			snprintf(ret_str, 10, "%d", -1);
+    			write(client_fd, ret_str, 10);
+    		}
     		
+			struct dirent * dp;
+			
+			//check to see if we can read the directory. if so tell the client to read the directory on their end
+			if ((dp=readdir(dir)) != NULL) {
+				printf("The directory was read successfully\n");
+				snprintf(ret_str, 10, "%d", 0);
+				write(client_fd, ret_str, 10);
+			}
+			//if we cannot read the directory, then tell the client not to read the directory on their end
+			else {
+				perror("The directory was unable to be read\n");
+    			snprintf(ret_str, 10, "%d", -1);
+    			write(client_fd, ret_str, 10);
+			}
     		
 		} else if (strcmp(op_type, "releasedir") == 0) {
 			// releasedir() takes one additional argument: the directory name.
@@ -346,9 +426,18 @@ void *client_handler(void *arg)
 			snprintf(ret_str, 20, "%d", return_code);
 			write(client_fd, ret_str, 20);
 
-		} else {
-			// Unrecognized command. Handle the error.
+		} 
+		
+		/*
+			The command is not recognized. The server is unable to handle it.
+			Error code -1 is returned to the server
+		*/
+		else {
 			printf("Unrecognized request\n");
+			char *ret_str = ((char*) malloc(20));
+			memset(ret_str, 0, 20);
+			snprintf(ret_str, 20, "%d", -1);
+			write(client_fd, ret_str, 20);
 		}
 
 	}
@@ -357,41 +446,82 @@ void *client_handler(void *arg)
 }
 
 //TODO: add custom port support here.
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
 	printf("Initializing serverSNFS...\n");
 
-	int tmp_ret;  // Holds return values of any operations we do.
-	int sock_fd;
+	//check to see if the correct number of arguments are passed in by the user
+	if (argc != 5) {
+		perror("Error: The user did not input the correct number of arugments\n");
+		exit(1);
+	}
 
-	struct sockaddr_in server_addr;
-	struct sockaddr_in client_addr;
+	char * directory_path; //contains the file path where the files are stored by the servers
+	
+	//parse the arguments and put them in variables
+	int i;
+	for (i = 0; i < argc; i++) {
+		if (strcmp("-port", argv[i]) == 0) {
+			i++;
+			port = atoi(argv[i]);
+		}
+		else if (strcmp("-mount", argv[i]) == 0) {
+			i++;
+			directory_path = argv[i];
+		}
+	}
+	
+	//check to see that the port and mount path are valid
+	if (port == 0) {
+		perror("The user did not pass in a good port number or a port at all\n");
+	}
+	else if (directory_path == NULL) {
+		perror("No directory path passed in by the user\n");
+	}
+	
+	int try_to_connect; //indicates whether port the server was binded or not
+	int sock_fd; //indicates whether the socket was successfully constructed
+	struct sockaddr_in server_addr; //socket address info struct for the server
+	struct sockaddr_in client_addr;	//socket address info struct for the client
 
+	//attempts to build the socket
 	sock_fd = socket(AF_INET, SOCK_STREAM, 0);
+	
+	//checks to see if the socket was initialized successfully
 	if (sock_fd < 0) {
 		perror("Construction of socket failed");
 		return 1;
 	}
 
+	//zeros out the address info struct 
 	memset(&server_addr, 0, sizeof(server_addr));
 
-	server_addr.sin_port = htons(PORT);
+	//converts the port from an int to a network int
+	server_addr.sin_port = htons(port);
+
+	//sets the network address flag to AF_INET
 	server_addr.sin_family = AF_INET;
+	
+	//sets the network address flag to accept all interfaces
 	server_addr.sin_addr.s_addr = INADDR_ANY;
 
-	tmp_ret = bind(sock_fd, (struct sockaddr *) &server_addr,
+	//attempts to bind the file descriptor to the port
+	try_to_connect = bind(sock_fd, (struct sockaddr *) &server_addr,
 			sizeof(server_addr));
-	if (tmp_ret < 0) {
+			
+	//checks to see if the socket was successfully binded to the port
+	if (try_to_connect < 0) {
 		perror("Could not bind to port");
 		return 1;
 	}
 
+	//takes the client socket descriptor and listens on the port to accept any incoming messages
 	int client_sock_fd;
-
 	listen(sock_fd, 1);
-
 	int clilen = sizeof(client_addr);
-
+	
+	printf("Server initiated successfully! Now accepting clients\n");
+	
+	//continues to accept connections for n amount of clients and any amount of tasks per client. Spawns a new worker thread for each task requested by the client.
 	while (client_sock_fd = accept(sock_fd, (struct sockaddr *) &client_addr,
 				&clilen)) {
 		pthread_t thread_id;
@@ -401,6 +531,7 @@ int main(int argc, char **argv)
 		}
 	}
 
+	//checks to see if the client was unable to connect
 	if (client_sock_fd < 0) {
 		perror("Client connection was rejected");
 		return 1;
