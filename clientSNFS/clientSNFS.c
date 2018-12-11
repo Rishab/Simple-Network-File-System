@@ -3,13 +3,15 @@
 #include <unistd.h>
 #include <string.h>
 #include <fuse.h>
+#include <netdb.h>
 
 #include <sys/socket.h>
 #include <netinet/in.h>
 
-#define PORT 54321
+//#define PORT 54321
 
 int server_fd = 0;
+int port = 0;
 
 static int snfs_getattr(const char *path, struct stat *fstats,
 		struct fuse_file_info *fi)
@@ -277,9 +279,9 @@ static int snfs_releasedir(const char * path, struct fuse_file_info * fi) {
 
 int main(int argc, char **argv)
 {
-	//check to see if enough arguments are passed in
-	if (argc < 7) {
-		perror("Error: The user did not input enough arguments\n");
+	//check to see if the correct number of arguments are passed in
+	if (argc != 7) {
+		perror("Error: The user did not input the correct number of arugments\n");
 		exit(1);
 	}
 
@@ -346,6 +348,9 @@ int main(int argc, char **argv)
 	
 	//converts the port from int to a network int and retrieves the endianness of the machine
 	serv_addr.sin_port = htons(port);
+	
+	//copies the bytes for the server's IP address into the server_addr struct
+	bcopy((char *) server_ip->h_addr, (char *) &serv_addr.sin_addr, server_ip->h_length);
 
 	try_to_connect = connect(sock, (struct sockaddr *) &serv_addr, sizeof(serv_addr));
 	if (try_to_connect != 0) {
