@@ -277,33 +277,80 @@ static int snfs_releasedir(const char * path, struct fuse_file_info * fi) {
 
 int main(int argc, char **argv)
 {
+	//check to see if enough arguments are passed in
+	if (argc < 7) {
+		perror("Error: The user did not input enough arguments\n");
+		exit(1);
+	}
+
+	char * directory_path; //contains the file path where the files are stored by the server
+	char * hostname; //contains the name of the hostname where serverSNFS is located
+	
+	//parse the arguments and put them in variables
+	int i;
+	for (i = 0; i < argc; i++) {
+		if (strcmp("-port", argv[i]) == 0) {
+			i++;
+			port = atoi(argv[i]);
+		}
+		else if (strcmp("-address", argv[i]) == 0) {
+			i++;
+			hostname = argv[i];
+		}
+		else if (strcmp("-mount", argv[i]) == 0) {
+			i++;
+			directory_path = argv[i];
+		}
+	}
+
+	//check to see that valid port number was passed in by the user
+	if (port < 0) {
+		perror("The user did not pass in a proper port\n");
+	}
+	
+	else if (hostname == NULL) {
+		perror("Server was not initialized?\n");
+	}
+	printf("The port passed in by the user is: %d\n", port);
+	printf("The hostname passed in by the user is: %s\n", hostname);
+	printf("The directory passed in by the user is: %s\n", directory_path);
+
 	struct sockaddr_in address;
 	int sock = 0;
 	int read_ret;
 	struct sockaddr_in serv_addr;
-
-
-	//char *hello = "6,open";
+	
+	//puts the server's IP into the server_ip struct
+	struct hostent * server_ip = gethostbyname(hostname);
+	
 	char buffer[1024] = {0};
 
-	int tmp_ret;
+	int try_to_connect;
 
+	//attempts to build a socket as a gateway to connect to the server
 	sock = socket(AF_INET, SOCK_STREAM, 0);
+	
+	//checks to see if the socket was successfully created
 	if (sock < 0) {
 		perror("socket failed");
 		return 1;
 	}
 
 	server_fd = sock;
-
+	
+	//zeros out the server_addr struct
 	memset(&serv_addr, 0, sizeof(serv_addr));
+	
+	//sets the network address flag to AF_INET
 	serv_addr.sin_family = AF_INET;
-	serv_addr.sin_port = htons(PORT);
+	
+	//converts the port from int to a network int and retrieves the endianness of the machine
+	serv_addr.sin_port = htons(port);
 
-	tmp_ret = connect(sock, (struct sockaddr *) &serv_addr, sizeof(serv_addr));
-	if (tmp_ret != 0) {
+	try_to_connect = connect(sock, (struct sockaddr *) &serv_addr, sizeof(serv_addr));
+	if (try_to_connect != 0) {
 		perror("connect failed");
-		return 1;
+		return 1; 
 	}
 
 	// write(sock, hello, strlen(hello));
