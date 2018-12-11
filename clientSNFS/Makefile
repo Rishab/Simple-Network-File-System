@@ -1,5 +1,5 @@
 CC := gcc
-CFLAGS := -g -Wall -D_FILE_OFFSET_BITS=64
+CFLAGS := -g -Wall -fsanitize=address -D_FILE_OFFSET_BITS=64 `pkg-config fuse --cflags --libs`
 
 all: clientSNFS
 

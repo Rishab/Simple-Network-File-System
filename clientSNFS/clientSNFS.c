@@ -1,3 +1,5 @@
+#define FUSE_USE_VERSION 31
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -5,6 +7,8 @@
 #include <fuse.h>
 #include <netdb.h>
 #include <dirent.h>
+#include <time.h>
+#include <errno.h>
 
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -16,6 +20,7 @@ int port = 0;
 
 static int snfs_getattr(const char *path, struct stat *fstats,
 		struct fuse_file_info *fi) {
+	printf("In the getattr function, path: %s\n", path);
 	int size = strlen(path) + 30;
 	char *message = (char *) malloc(sizeof(char) * (strlen(path) + 30));
 	memset(message, 0, strlen(path) + 30);
@@ -25,11 +30,18 @@ static int snfs_getattr(const char *path, struct stat *fstats,
 	char *result = (char *) malloc(sizeof(char) * 30);
 	memset(result, 0, 30);
 	read(server_fd, result, 30);
+
 	printf("%s\n", result);
 
 	int server_return = atoi(result);
 
 	printf("%d\n", server_return);
+	
+	int client_return = lstat(path, fstats);
+	if (client_return == -1) {
+		return -errno;
+	}
+	
 	return 0;
 }
 
@@ -293,15 +305,25 @@ static int snfs_releasedir(const char * path, struct fuse_file_info * fi) {
 	
 	return 0;
 }
-/*
+
 static struct fuse_operations operations = {
     .getattr	= snfs_getattr,
+    .truncate	= snfs_truncate,
+    .open		= snfs_open,
+    .write		= snfs_write,
+    .read		= snfs_read,
+    .flush		= snfs_flush,
+    .release	= snfs_release,
+    .create		= snfs_create,
+    .mkdir		= snfs_mkdir,
+    .opendir	= snfs_opendir,
     .readdir	= snfs_readdir,
-    .read	= snfs_read,
+    //.releasedir	= snfs_releasedir
 };
-*/
+
 int main(int argc, char **argv)
 {
+/*
 	//check to see if the correct number of arguments are passed in
 	if (argc != 7) {
 		perror("Error: The user did not input the correct number of arugments\n");
@@ -338,8 +360,10 @@ int main(int argc, char **argv)
 	}
 	printf("The port passed in by the user is: %d\n", port);
 	printf("The hostname passed in by the user is: %s\n", hostname);
-	printf("The directory passed in by the user is: %s\n", directory_path);
-
+	//printf("The directory passed in by the user is: %s\n", directory_path);
+*/
+	port = 16268;
+	const char * hostname = "grep.cs.rutgers.edu";
 	struct sockaddr_in address;
 	int sock = 0;
 	int read_ret;
@@ -380,17 +404,13 @@ int main(int argc, char **argv)
 		perror("connect failed");
 		return 1; 
 	}
-
-	// write(sock, hello, strlen(hello));
-	printf("Hello message sent\n");
-	printf("%s\n", buffer);
-
-	// snfs_getattr("./mk1483.txt", NULL, NULL);
-	//snfs_truncate("./mk1483.txt\0", 10, NULL);
-
-	//snfs_readdir("./tmp", NULL, 0, NULL, NULL);
-	//snfs_opendir("./tmp", NULL);
 	
-	snfs_open("./tmp/os.txt", NULL);
-	return 0;
+	struct fuse_args args = FUSE_ARGS_INIT(0, NULL);
+	
+	fuse_opt_parse(&args, NULL, NULL, NULL);
+	fuse_opt_add_arg(&args, "/tmp/rc9512");
+	
+	printf("Successfully connected to the server\n");
+	
+	return fuse_main(argc, argv, &operations, NULL);
 }

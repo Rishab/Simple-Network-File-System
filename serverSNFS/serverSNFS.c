@@ -169,6 +169,7 @@ void *client_handler(void *arg)
 		if (strcmp(op_type, "getattr") == 0) {
 			printf("Got a getattr request\n");
 			char *path = strtok(NULL, ",");
+			strcat(mount, path);
 			printf("Path: %s\n", path);
 			struct stat stats;
 			int ret = stat(path, &stats);
@@ -387,7 +388,6 @@ void *client_handler(void *arg)
     		printf("Path: %s\n", path);
     		
     		char * ret_str = (char *) malloc(sizeof(char) * 10);
-    		
     		//try to open the file path
     		DIR * dir = opendir_handler(path);
     		//write back null if not possible to read because the path is not opened
