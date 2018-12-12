@@ -20,6 +20,9 @@
  */
  
 int port = 0;
+
+char *mount_path = NULL;
+
 int num_files = 0;
 int num_directories = 0;
 
@@ -29,7 +32,7 @@ int num_directories = 0;
  * If both str1 and str2 are NULL, it returns NULL.
  * Also frees the memory for str1 and str2 assuming they are not NULL.
  */
-char *strcat_dynamic(char *str1, char *str2)
+char *strcat_dynamic(char *str1, char *str2, int free_first)
 {
 	if (str1 == NULL && str2 == NULL) {
 		return NULL;
@@ -51,7 +54,9 @@ char *strcat_dynamic(char *str1, char *str2)
 	strcat(concat_str, str2);
 
 	// Free memory for input strings.
-	free(str1);
+    if (free_first) {
+        free(str1);
+    }
 	free(str2);
 
 	return concat_str;
@@ -151,7 +156,7 @@ void *client_handler(void *arg)
 			partial_buffer = (char *) malloc(sizeof(char) * (remaining_bytes));
 			memset(partial_buffer, 0, remaining_bytes);
 			int new_read = read(client_fd, partial_buffer, remaining_bytes);
-			buffer = strcat_dynamic(buffer, partial_buffer);
+			buffer = strcat_dynamic(buffer, partial_buffer, 1);
 		}
 		printf("Command: %s\n", buffer);
 
@@ -167,22 +172,41 @@ void *client_handler(void *arg)
 			Protocol: <number of bytes to read>,<getattr>,<path to file>
 		*/
 		if (strcmp(op_type, "getattr") == 0) {
+            /* getattr
+             * Gets file information.
+             * Response form: <return_code>,<struct stat>
+             */
 			printf("Got a getattr request\n");
 			char *path = strtok(NULL, ",");
-			strcat(mount, path);
-			printf("Path: %s\n", path);
-			struct stat stats;
-			int ret = stat(path, &stats);
+            char *absolute_path = strcat_dynamic(mount_path, path, 0); 
+	    	printf("Path: %s\n", absolute_path);
+			struct stat server_stats;
+			int ret = stat(absolute_path, &server_stats);
 
 			if (ret != 0) {
 				perror("error in stat");
 			}
 
-			char *ret_str = (char *) malloc(sizeof(int) * 10);
-			memset(ret_str, 0, 10);
-			snprintf(ret_str, 10, "%d", ret);
-			write(client_fd, ret_str, 10);
+            int ret_str_size = sizeof(struct stat) + 20;
+            char *ret_str = (char *) malloc(ret_str_size);
 
+			memset(ret_str, 0, ret_str_size);
+			snprintf(ret_str, 10, "%d,", ret);
+            
+            // Have to find the index where the "," is in the string, so we
+            // can append the bytes for the stat struct right after.
+            int comma_index = 0;
+            while (comma_index < ret_str_size) {
+                if (ret_str[comma_index] == ',') {
+                    break;
+                } else {
+                    comma_index++;
+                }
+            }
+            
+            ret_str = (char *) memcpy(ret_str + comma_index + 1, &server_stats, sizeof(struct stat));
+
+			write(client_fd, ret_str, ret_str_size);
 		} 
 		
 		/* 
@@ -521,6 +545,12 @@ int main(int argc, char **argv) {
 	
 	printf("Server initiated successfully! Now accepting clients\n");
 	
+    mount_path = (char *) malloc(sizeof(char) * (strlen(directory_path) + 1));
+    memset(mount_path, 0, strlen(directory_path) + 1);
+    strncpy(mount_path, directory_path, strlen(directory_path));
+    
+    printf("Set mount_path to %s\n", mount_path);
+
 	//continues to accept connections for n amount of clients and any amount of tasks per client. Spawns a new worker thread for each task requested by the client.
 	while (client_sock_fd = accept(sock_fd, (struct sockaddr *) &client_addr,
 				&clilen)) {

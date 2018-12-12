@@ -10,6 +10,8 @@
 #include <time.h>
 #include <errno.h>
 
+#include <sys/types.h>
+#include <sys/stat.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 
@@ -27,24 +29,33 @@ static int snfs_getattr(const char *path, struct stat *fstats,
 	snprintf(message, size, "%d,getattr,%s", strlen(path)+30, path);
 	write(server_fd, message, size);
 
-	char *result = (char *) malloc(sizeof(char) * 30);
-	memset(result, 0, 30);
-	read(server_fd, result, 30);
+    int result_size = sizeof(struct stat) + 20;
+	char *result = (char *) malloc(result_size);
+	memset(result, 0, result_size);
+    
+    read(server_fd, result, result_size);
+    
+    char *rest;    // Stores the rest of the string after we tokenize a part of it.
+    char *return_code = strtok_r(result, ",", &rest);
 
-	printf("%s\n", result);
+    int return_int = atoi(return_code);
+    
+    printf("getattr returned %d\n", return_int);
 
-	int server_return = atoi(result);
-
-	printf("%d\n", server_return);
-	
-	int client_return = lstat(path, fstats);
-	if (client_return == -1) {
+	if (return_int != 0) {
 		return -errno;
 	}
+
+    // Once we tokenize once, the remaining part of the string will be a
+    // stat structure that we should set.
+    struct stat *stat_ptr;
+    stat_ptr = memcpy(fstats, rest, sizeof(struct stat));
+	
 	
 	return 0;
 }
 
+/*
 static int snfs_truncate(const char * path, off_t length,
 		struct fuse_file_info *fi) {
 	//TODO: check if file is not opened
@@ -239,6 +250,8 @@ static int snfs_opendir(const char * path, struct fuse_file_info * fi) {
 	return 0;
 }
 
+*/
+/*
 static int snfs_readdir(const char * path, void * buffer,
 		fuse_fill_dir_t filler, off_t offset,
 		struct fuse_file_info * fi) {
@@ -277,6 +290,8 @@ static int snfs_readdir(const char * path, void * buffer,
 	
 	return 0;
 }
+*/
+/*
 
 static int snfs_releasedir(const char * path, struct fuse_file_info * fi) {
 
@@ -306,6 +321,10 @@ static int snfs_releasedir(const char * path, struct fuse_file_info * fi) {
 	return 0;
 }
 
+
+*/
+
+/*
 static struct fuse_operations operations = {
     .getattr	= snfs_getattr,
     .truncate	= snfs_truncate,
@@ -319,6 +338,11 @@ static struct fuse_operations operations = {
     .opendir	= snfs_opendir,
     .readdir	= snfs_readdir,
     //.releasedir	= snfs_releasedir
+};
+*/
+
+static struct fuse_operations operations = {
+    .getattr = snfs_getattr
 };
 
 int main(int argc, char **argv)
@@ -363,7 +387,7 @@ int main(int argc, char **argv)
 	//printf("The directory passed in by the user is: %s\n", directory_path);
 */
 	port = 16268;
-	const char * hostname = "grep.cs.rutgers.edu";
+	const char * hostname = "kill.cs.rutgers.edu";
 	struct sockaddr_in address;
 	int sock = 0;
 	int read_ret;
@@ -408,7 +432,7 @@ int main(int argc, char **argv)
 	struct fuse_args args = FUSE_ARGS_INIT(0, NULL);
 	
 	fuse_opt_parse(&args, NULL, NULL, NULL);
-	fuse_opt_add_arg(&args, "/tmp/rc9512");
+	fuse_opt_add_arg(&args, "/freespace/local/mk_serv/");
 	
 	printf("Successfully connected to the server\n");
 	
