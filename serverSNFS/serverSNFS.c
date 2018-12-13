@@ -238,14 +238,14 @@ void *client_handler(void *arg)
 			Protocol: <number of bytes to read>,<getattr>,<path to file>
 		*/
 		if (strcmp(op_type, "getattr") == 0) {
-            		/* getattr
-             		* Gets file information.
-             		* Response form: <return_code>,<struct stat>
-             		*/
-			printf("Got a getattr request\n");
-			char *path = strtok(NULL, ",");
-            		char *absolute_path = strcat_dynamic(mount_path, path, 0);
-	    		printf("Path: %s\n", absolute_path);
+            /* getattr
+             * Gets file information.
+             * Response form: <return_code>,<struct stat>
+             */
+		    printf("Got a getattr request\n");
+		    char *path = strtok(NULL, ",");
+            char *absolute_path = strcat_dynamic(mount_path, path, 0);
+	        printf("Path: %s\n", absolute_path);
 			struct stat server_stats;
 			int ret = stat(absolute_path, &server_stats);
 
@@ -253,110 +253,162 @@ void *client_handler(void *arg)
 				perror("error in stat");
 			}
 
-
-
-            		int ret_str_size = 300;
-            		char *ret_str = (char *) malloc(ret_str_size);
-
+            int ret_str_size = 300;
+            char *ret_str = (char *) malloc(ret_str_size);
 
 			memset(ret_str, 0, ret_str_size);
-			snprintf(ret_str, 300, "%d,%d,%ld,%ld,%d,%ld,%d,%d,%ld,%ld,%ld,%ld,%ld,%ld,%ld", ret, errno,
-				server_stats.st_dev, server_stats.st_ino, server_stats.st_mode, server_stats.st_nlink, server_stats.st_uid,
-				server_stats.st_gid, server_stats.st_rdev, server_stats.st_size, server_stats.st_atime,
-				server_stats.st_mtime, server_stats.st_ctime, server_stats.st_blksize, server_stats.st_blocks);
+			snprintf(ret_str, 300, "%d,%d,%ld,%ld,%d,%ld,%d,%d,%ld,%ld,%ld,%ld,%ld,%ld,%ld", 
+                     ret, 
+                     errno,
+				     server_stats.st_dev, 
+                     server_stats.st_ino, 
+                     server_stats.st_mode, 
+                     server_stats.st_nlink, 
+                     server_stats.st_uid,
+                     server_stats.st_gid, 
+                     server_stats.st_rdev, 
+                     server_stats.st_size, 
+                     server_stats.st_atime,
+                     server_stats.st_mtime, 
+                     server_stats.st_ctime, 
+                     server_stats.st_blksize, 
+                     server_stats.st_blocks
+            );
 
 			printf("Result: %s\n", ret_str);
 
 			write(client_fd, ret_str, ret_str_size);
 			return NULL;
-		}
 
-		/*
-			Truncate will reduce or expand the file to th specified number of bytes.
-			If the file is larger than the specified bytes, then data is lost.
-			Returns 0 if successful and -1 if failed.
-			Protocol: <number of bytes to read>,<getattr>,<path to file>
-		*/
-		else if (strcmp(op_type, "truncate") == 0) {
-			printf("Got a truncate request\n");
-			char *path = strtok(NULL, ",");
-			printf("Truncate File Path: %s\n", path);
-			int offset = atoi(strtok(NULL, ","));
-			printf("Truncate Offset: %d\n", offset);
-			int result = truncate(path, offset);
-			if (result != 0) {
-				perror("Truncate error on the server\n");
-			}
-
-			char * result_str = (char *) malloc (sizeof(int) * 10);
-			memset(result_str, 0, 10);
-			snprintf(result_str, 10, "%d", result);
-			write(client_fd, result_str, 10);
-
-		}
-
-		/*
-			Open will open a file. If the file does not already exist, it will create it first.
-			The file is opened with the permissions specified (mode and permissions)
-			and at the path given.
-			If successful, open returns the file descriptor of the opened file. Else, -1.
-			Protocol: <number of bytes to read>,<open>,<path>,<flags>
-		*/
-		else if (strcmp(op_type, "open") == 0) {
-			printf("Got an open request\n");
-            char *open_path = strtok(NULL, ",");
-            char *open_flags = strtok(NULL, ",");
-            printf("Open path: %s\n", open_path);
-            printf("Open flags: %s\n", open_flags);
-
-            int flags = atoi(open_flags);
-
-            int fd = open(open_path, flags);
-            printf("Open result: %d\n", fd);
+		} else if (strcmp(op_type, "truncate") == 0) {
+            /* truncate
+             * Changes size to number of bytes.
+             * Request form: 1,<path>,<size>
+             *           OR  0,<fd>,<size>
+             * Response form: <return_code>,<errno>
+             */
+            printf("Got a truncate request\n");
+            
+            int is_file_open = atoi(strtok(NULL, ","));
+            int result_code;
+            if (is_file_open) {
+                int fd = atoi(strtok(NULL, ","));
+                int length = atoi(strtok(NULL, ","));
+                printf("Truncate file descriptor: %d\n", fd);
+			    printf("Truncate Length: %d\n", length);
+                result_code = ftruncate(fd, length);
+			} else {
+                char *path = strtok(NULL, ",");
+                char *absolute_path = strcat_dynamic(mount_path, path, 0);
+			    int length = atoi(strtok(NULL, ","));
+                printf("Truncate File Path: %s\n", absolute_path);
+			    printf("Truncate Length: %d\n", length);
+                result_code = truncate(absolute_path, length);
+            }
 
             char *result = (char *) malloc(sizeof(char) * 30);
             memset(result, 0, 30);
-            snprintf(result, 30, "%d", fd);
+
+            if (result_code == 0) {
+                snprintf(result, 30, "%d,0", result_code);
+            } else {
+                snprintf(result, 30, "%d,%d", result_code, errno);
+            }
+
+			write(client_fd, result, 30);
+            return NULL;
+		
+        } else if (strcmp(op_type, "open") == 0) {
+			/* open
+             * Opens up a file descriptor for a file to write to.
+             * Request form: <path>,<flags>
+             * Response form: <fd>,<errno>  (fd will be -1 on an error).
+             */
+            
+            printf("Got an open request\n");
+            char *open_path = strtok(NULL, ",");
+            char *absolute_path = strcat_dynamic(mount_path, open_path, 0);
+            int flags = atoi(strtok(NULL, ","));
+            
+            printf("Open path: %s \t Flags: %d\n", absolute_path, flags);
+
+            int fd = open(absolute_path, flags);
+            
+            printf("Open result: %d\n", fd);
+            
+            char *result = (char *) malloc(sizeof(char) * 30);
+            memset(result, 0, 30);
+            
+            if (fd == -1) {
+                snprintf(result, 30, "%d,%d", fd, errno);
+            } else {
+                snprintf(result, 30, "%d,0", fd);
+            }
+            
             write(client_fd, result, 30);
-
-		}
-
-		/*
-			Read will read the number of bytes requested by the client and store it in a buffer.
-			Read has three additional arguments: the filepath, the number of bytes to read, and
-			the offset from the beginning of the file.
-			If successful, read will return the number of bytes read back to the client. Else, -1.
-			Protocol: <number of bytes in the buffer>,<
-		*/
-		else if (strcmp(op_type, "read") == 0) {
-			// read() has three additional arguments: the filepath, the number
-			// of bytes to read, and the offset from the beginning of the file
-			// where we should start reading from.
+            return NULL;
+		
+        } else if (strcmp(op_type, "read") == 0) {
+			/* read
+             * Reads from file into a buffer.
+             * Request form: 1,<path>,<size>,<offset>
+             *          OR:  0,<fd>,<size>,<offset>
+             * Response form: <return_code>,<errno>,<read_buffer>
+             */
 			printf("Got a read request\n");
+            
+            int is_file_unopened = atoi(strtok(NULL, ","));
 
-            char *read_path = strtok(NULL, ",");
-            char *size_str = strtok(NULL, ",");
-            char *offset_str = strtok(NULL, ",");
+            int fd;
 
-            int size = atoi(size_str);
-            int offset = atoi(offset_str);
+            if (is_file_unopened) {
+                // Have to open the file first before we can read from it.
+                char *path = strtok(NULL, ",");
+                char *absolute_path = strcat_dynamic(mount_path, path, 0);
+                printf("Absolute path is: %s\n", absolute_path);
+                fd = open(absolute_path, O_RDONLY);
+            } else {
+                printf("Reading from a file descriptor\n");
+                fd = atoi(strtok(NULL, ","));
+            }
+
+            int size = atoi(strtok(NULL, ","));
+            int offset = atoi(strtok(NULL, ","));
+            
+            printf("Read size: %d\n", size);
+            printf("Read offset: %d\n", offset);
+
+            int result_size = size + 30;
+
+            char *result = (char *) malloc(sizeof(char) * result_size);
+            memset(result, 0, result_size);
+            
+            if (fd < 0) {
+                // There was an error opening the file, or we got a bad fd.
+                snprintf(result, result_size, "%d,%d", fd, errno);
+                write(client_fd, result, result_size);
+                return NULL;
+            }
+            
+            printf("File was successfully opened\n");
 
             char *buffer = (char *) malloc(sizeof(char) * (size + 1));
             memset(buffer, 0, size + 1);
 
-            int fd = open(read_path, O_RDWR);
-            if (fd < 0) {
-                char *result = (char *) malloc(sizeof(char) * (size + 20));
-                memset(result, 0, size + 20);
-                snprintf(result, size + 20, "%d", fd);
-                write(client_fd, result, size + 20);
-            } else {
-                int read_res = pread(fd, buffer, size, offset);
-                char *result = (char *) malloc(sizeof(char) * (size + 20));
-                memset(result, 0, size + 20);
-                snprintf(result, size + 20, "%d,%s", size + 20, buffer);
-                write(client_fd, result, size + 20);
+            int read_bytes = pread(fd, buffer, size, offset);
+            
+            printf("Read bytes: %d\n", read_bytes);
+
+            if (read_bytes == -1) {
+                // There was an error reading the file.
+                snprintf(result, result_size, "%d,%d", read_bytes, errno);
+                write(client_fd, result, result_size);
+                return NULL;
             }
+            
+            snprintf(result, result_size, "%d,0,%s", read_bytes, buffer);
+            write(client_fd, result, result_size);
+            return NULL;    
 
         } else if (strcmp(op_type, "write") == 0) {
             // write() has four additional arguments: the filepath, the buffer
@@ -412,24 +464,37 @@ void *client_handler(void *arg)
 			write(client_fd, ret_str, 20);
 
 		} else if (strcmp(op_type, "create") == 0) {
-			// create() takes two additional arguments: the filepath, and the
-			// mode to open the file in.
+            /* create
+             * Like open, but it creates a file if it doesn't exist.
+             * Request form: <path>,<flags>,<filemode>
+             * Response form: <return_code>,<errno>
+             */
 			printf("Got a create request\n");
-            char * create_path = strtok(NULL, ",");
-            char * create_flags = strtok(NULL, ",");
+
+            char *create_path = strtok(NULL, ",");
+            char *absolute_path = strcat_dynamic(mount_path, create_path, 0);
+            int flags = atoi(strtok(NULL, ","));
+            int filemode = atoi(strtok(NULL, ","));
+            
             printf("Create path: %s\n", create_path);
-            printf("Create flags: %s\n", create_flags);
+            printf("Create flags: %d\n", flags);
+            printf("File mode: %d\n", filemode);
 
-            int flags = atoi(create_flags);
 
-            int fd = open(create_path, create_flags);
+            int fd = open(absolute_path, flags, filemode);
             printf("Create result: %d\n", fd);
 
             char *result = (char *) malloc(sizeof(char) * 30);
             memset(result, 0, 30);
-            snprintf(result, 30, "%d", fd);
-            write(client_fd, result, 30);
 
+            if (fd == -1) {
+                snprintf(result, 30, "%d,%d", fd, errno);
+            } else {
+                snprintf(result, 30, "%d,0", fd);
+            }
+
+            write(client_fd, result, 30);
+            return NULL;
 
 		} else if (strcmp(op_type, "mkdir") == 0) {
 			// mkdir() takes two additional arguments: the directory name, and
@@ -473,10 +538,10 @@ void *client_handler(void *arg)
 			printf("Got a readdir request\n");
 			char * path = strtok(NULL, ",");
     			printf("Path: %s\n", path);
-
+            char *absolute_path = strcat_dynamic(mount_path, path, 0);
     			char * ret_str = (char *) malloc(sizeof(char) * 10);
     			//try to open the file path
-    			DIR * dir = opendir_handler(path);
+    			DIR * dir = opendir_handler(absolute_path);
 
 			//write back null if not possible to read because the path is not opened
 			if (dir == NULL) {
@@ -485,9 +550,9 @@ void *client_handler(void *arg)
 	    			write(client_fd, ret_str, 10);
 	    		}
 
-			int num_entries = readdir_handle_num_entries(path);
-			int stream_len = readdir_handle_length(path);
-			ret_str = readdir_handle_string(path, stream_len, num_entries);
+			int num_entries = readdir_handle_num_entries(absolute_path);
+			int stream_len = readdir_handle_length(absolute_path);
+			ret_str = readdir_handle_string(absolute_path, stream_len, num_entries);
 
 			write(client_fd, ret_str, 1000);
 

@@ -24,7 +24,7 @@
 static int fasten() {
 	printf("Attempting to fasten to the server\n");
 	int port = 16269;
-	const char * hostname = "pwd.cs.rutgers.edu";
+	const char * hostname = "kill.cs.rutgers.edu";
 	struct sockaddr_in address;
 	int sock = 0;
 	int read_ret;
@@ -119,106 +119,156 @@ static int snfs_getattr(const char *path, struct stat *fstats,
 	return 0;
 }
 
-/*
+
+/* truncate
+ * Request form: <msg_len>,truncate,0,<path>,<length>
+ *           OR  <msg_len>,truncate,1,<fd>,<length>
+ */
 static int snfs_truncate(const char * path, off_t length,
 		struct fuse_file_info *fi) {
-	//TODO: check if file is not opened
 	printf("Truncate function called by user\n");
-	int size = strlen(path) + 30;
-	char*  message = (char *) malloc(sizeof(char) * (strlen(path) + 30));
-	memset(message, 0, strlen(path) + 30);
-	snprintf(message, size, "%d,truncate,%s,%d", strlen(path) + 30, path, length);
-	write(server_fd, message, size);
+	
+    int server_fd = fasten();
+    if (server_fd == -1) {
+        return -1;
+    }
 
+    if (fi == NULL) {
+        // Use the file path parameter, since no file info was passed in.
+        int size = strlen(path) + 40;
+	    char*  message = (char *) malloc(sizeof(char) * size);
+    	memset(message, 0, size);
+	    snprintf(message, size, "%d,truncate,0,%s,%d", size, path, length);
+    	write(server_fd, message, size);    
+    } else {
+        // Use the file handle in fi instead of the path.
+        int size = 50;
+        char *message = (char *) malloc(sizeof(char) * size);
+        memset(message, 0, size);
+        snprintf(message, size, "%d,truncate,1,%d,%d", size, fi->fh, length);
+        write(server_fd, message, size);
+    }
+    
 	char *result = (char *) malloc(sizeof(char) * 30);
 	memset(result, 0, 30);
 	read(server_fd, result, 30);
 	printf("%s\n", result);
 
-	int server_return = atoi(result);
-
-	printf("%d\n", server_return);
+    int result_code = atoi(strtok(result, ","));
+	
+    printf("%d\n", result_code);
+    
+    close(server_fd);
+	
+    if (result_code == -1) {
+        errno = atoi(strtok(result, ","));
+        return -errno;
+    }
 
 	return 0;
-
 }
+
+
+/* open
+ * Request form: <msg_len>,open,<path>,<flags>
+ * Response form: <return_code>,<errno>
+ */
 static int snfs_open(const char * path, struct fuse_file_info * fi) {
     printf("Open function called by user\n");
-    int size = strlen(path) + 30;
+
+    int server_fd = fasten(); 
+
+    int size = strlen(path) + 40;
     char *message = (char *) malloc(sizeof(char) * size);
     memset(message, 0, size);
-    snprintf(message, size, "%d,open,%s", size, path);
+    snprintf(message, size, "%d,open,%s,%d", size, path, fi->flags);
     write(server_fd, message, size);
 
     char *result = (char *) malloc(sizeof(char) * 30);
     memset(result, 0, 30);
     read(server_fd, result, 30);
     printf("Open result: %s\n", result);
+    
+    close(server_fd);
 
-    int server_return = atoi(result);
-
-    if (server_return < 0) {
-        perror("Server error on open\n");
-        return server_return;
+    int return_code = atoi(strtok(result, ","));
+    
+    if (return_code == -1) {
+        errno = atoi(strtok(NULL, ","));
+        return -errno;
     }
 
-    int fd = open(path, fi->flags);
-
-    if (fd < 0) {
-        perror("Client error on open\n");
-        return fd;
-    }
-    fi->fh = fd;
+    fi->fh = return_code;
 	return 0;
 }
 
+
+/* read
+ * Request form: <msg_len>,read,1,<path>,<size>,<offset>
+ *          OR:  <msg_len>,read,0,<fd>,<size>,<offset>
+ * Response form: <return_code>,<errno>,<read_buffer>
+ */
 static int snfs_read(const char * path, char * buffer, size_t size, off_t offset, struct fuse_file_info * fi)
 {
-    printf("Read functionn called by user\n");
-    int msg_size = strlen(path) + 60;
-    char *message = (char *) malloc(sizeof(char) * msg_size);
-    memset(message, 0, msg_size);
-    snprintf(message, size, "%d,read,%s,%d,%d", msg_size, path, (int) size, (int) offset);
-    write(server_fd, message, msg_size);
+    printf("Read function called by user\n");
+    
+    int server_fd = fasten();
 
-    char *result = (char *) malloc(sizeof(char) * (size + 20));
+    if (server_fd == -1) {
+        return -1;
+    }
+
+    if (fi == NULL) {
+        // No file info was passed in, so use the path argument to read.
+        int msg_size = strlen(path) + 60;
+        char *message = (char *) malloc(sizeof(char) * msg_size);
+        memset(message, 0, msg_size);
+        snprintf(message, msg_size, "%d,read,1,%s,%d,%d", msg_size, path, size, offset);
+        write(server_fd, message, msg_size);
+    } else {
+        // File info was passed in, so use the file handle from fi to read.
+        int msg_size = 70;
+        char *message = (char *) malloc(sizeof(char) * msg_size);
+        memset(message, 0, msg_size);
+        snprintf(message, msg_size, "%d,read,0,%d,%d,%d", msg_size, fi->fh, size, offset);
+        write(server_fd, message, msg_size);
+    }
+    
+    int res_size = size + 30;
+    char *result = (char *) malloc(sizeof(char) * res_size);
     memset(result, 0, size + 20);
-    read(server_fd, result, size+20);
+    read(server_fd, result, res_size);
+    
+    printf("Read result: %s\n", result);
 
-    char *result_code_str = strtok(result, ",");
-    char *read_buffer = strtok(NULL, ",");
+    close(server_fd);      // Done reading from the server.
+    
+    // Need to use strtok_r later to get the read buffer. So we have to
+    // allocate a temporary string to use with strtok_r when we get the
+    // return code, even though it's essentially useless.
+    char *rest = (char *) malloc(sizeof(char) * res_size);
+    memset(rest, 0, res_size);
 
-    int result_code = atoi(result_code_str);
-    if (result_code < 0) {
-        perror("Server error on read\n");
+    int result_code = atoi(strtok_r(result, ",", &rest));
+    
+    printf("Read %d bytes\n", result_code);
+
+    if (result_code == -1) {
+        errno = atoi(strtok_r(rest, ",", &rest));
+        return -errno;
+    } else {
+        // result_code holds the number of bytes that were read.
+        char *read_string = (char *) malloc(sizeof(char) * (result_code + 1));
+        memset(read_string, 0, result_code + 1);
+        char *error = strtok_r(rest, ",", &read_string);
+        printf("Read string: %s\n", read_string);
+        // read_string now holds the buffer that was read from the file.
+        strncpy(buffer, read_string, result_code);
         return result_code;
     }
-
-    int fd;
-
-    if (fi == NULL) {
-        fd = open(path, fi->flags);
-    } else {
-        fd = fi->fh;
-    }
-
-    int client_result = pread(fd, buffer, size, offset);
-    if (client_result < 0) {
-        perror("Client error on read\n");
-        return client_result;
-    }
-
-    if (strcmp(buffer, read_buffer) != 0) {
-        printf("WARNING: the read operation succeeded, but there is a consistency error between client and server. Data may not match up on future operations.\n");
-    }
-
-    if (fi == NULL) {
-        close(fd);
-    }
-
-	return client_result;
 }
 
+/*
 static int snfs_write(const char * path, const char * buffer, size_t size, off_t offset, struct fuse_file_info * fi)
 {
     int msg_size = strlen(path) + size + 60;
@@ -267,9 +317,50 @@ static int snfs_release(const char * path, struct fuse_file_info * fi) {
 	return 0;erver_ip->h_a
 }
 
+*/
+
+/* create
+ * Request form: <msg_len>,create,<path>,<flags>,<filemodes>
+ * Response form: <return_code>,<errno>
+ */
 static int snfs_create(const char * path, mode_t filemodes, struct fuse_file_info * fi) {
+    printf("Client called create\n");
+
+    int server_fd = fasten();
+
+    if (server_fd == -1) {
+        return -1;
+    }
+
+    int msg_len = strlen(path) + 50;
+    char *message = (char *) malloc(sizeof(char) * msg_len);
+    memset(message, 0, msg_len);
+    snprintf(message, msg_len, "%d,create,%s,%d,%d", msg_len, path, fi->flags, filemodes);
+    write(server_fd, message, msg_len);
+
+
+    int result_size = 30;
+    char *result = (char *) malloc(sizeof(char) * result_size);
+    memset(result, 0, result_size);
+
+    read(server_fd, result, result_size);
+
+    close(server_fd);       // Done reading responses from the server.
+
+    int result_code = atoi(strtok(result, ","));
+    
+    if (result_code == -1) {
+        errno = atoi(strtok(NULL, ","));
+        return -errno;
+    }
+    
+    fi->fh = result_code;
+    
 	return 0;
 }
+
+
+/*
 
 static int snfs_mkdir(const char * path, mode_t dirmode) {
 	int msg_size = strlen(path) + sizeof(mode_t) + 60;
@@ -407,8 +498,12 @@ static int snfs_releasedir(const char * path, struct fuse_file_info * fi) {
 }
 
 static struct fuse_operations operations = {
-    .getattr = snfs_getattr,
-    .readdir = snfs_readdir
+    .getattr  = snfs_getattr,
+    .readdir  = snfs_readdir,
+    .truncate = snfs_truncate,
+    .open     = snfs_open,
+    .read     = snfs_read,
+    .create   = snfs_create
 };
 
 int main(int argc, char **argv)
