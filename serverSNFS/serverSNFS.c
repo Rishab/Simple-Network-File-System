@@ -23,9 +23,6 @@ int port = 0;
 
 char *mount_path = NULL;
 
-int num_files = 0;
-int num_directories = 0;
-
 /*
  * Takes in two malloc'ed strings, and concatenates them str1 | str2.
  * If either str1 or str2 is NULL, it returns the non-NULL one.
@@ -51,15 +48,28 @@ char *strcat_dynamic(char *str1, char *str2, int free_first)
 	char *concat_str = (char *) malloc(sizeof(char) * concat_len);
 	memset(concat_str, 0, concat_len);
 	strncpy(concat_str, str1, strlen(str1));
-	strcat(concat_str, str2);
+	strncpy(concat_str + strlen(str1), str2, strlen(str2));
 
 	// Free memory for input strings.
     if (free_first) {
         free(str1);
     }
-	free(str2);
+	//free(str2);
 
 	return concat_str;
+}
+
+int num_digits (int n) {
+	int digits = 0;
+//	printf("%d ", n);
+
+	while(n > 0) {
+		n /= 10;
+		digits++;
+	}
+
+//	printf("has %d digits\n", digits);
+	return digits;
 }
 
 DIR * opendir_handler(char * file_path) {
@@ -71,16 +81,16 @@ DIR * opendir_handler(char * file_path) {
 	
 	return dir;
 }
-/*
+
 int readdir_handle_length(char * file_path) {
 	DIR * dir = opendir_handler(file_path);
 	struct dirent * dp;
 	
-	num_files = 0;
+	int num_files = 0;
 	int files_length = 0;
 	
 	while ((dp=readdir(dir)) != NULL) {
-		printf("File name: %s\n", dp->d_name);
+		//printf("File name: %s\n", dp->d_name);
 		files_length += strlen(dp->d_name);
 		num_files++;
 	}
@@ -89,34 +99,89 @@ int readdir_handle_length(char * file_path) {
     return files_length; 
 }
 
+int readdir_handle_num_entries(char * file_path) {
+	DIR * dir = opendir_handler(file_path);
+	struct dirent * dp;
+	
+	int num_files = 0;
+	
+	while ((dp=readdir(dir)) != NULL) {
+		//printf("File name: %s\n", dp->d_name);
+		num_files++;
+	}
+	
+	printf("The number of entries is: %d\n", num_files);
+    return num_files; 
+}
+
 char * readdir_handle_string(char * file_path, int stream_length, int num_files) {
 
-	char * files = (char *) malloc(sizeof(char) * stream_length + num_files);
+	printf("handling string readdir...\n");
+
 	DIR * dir =  opendir(file_path);
 	struct dirent * dp;
 		
 	if (dir == NULL) {
+		printf("dir is NULL\n");
 		return NULL;
 	}
 	
-	int i = 0;
-	
+	int num_files_size = num_digits(num_files);
+	char *num_files_str = (char *) malloc(sizeof(char) * num_files_size + 1);
+	//printf("num_files: value [%d], size [%d]\n", num_files, num_files_size + 1);
+
+	int stream_len_size = num_digits(stream_length);
+
+	int final_stream_len = stream_length + num_files + 2 + num_files_size + stream_len_size;
+	int final_stream_len_size = num_digits(final_stream_len);
+	char *final_stream_len_str = (char *) malloc(sizeof(char) * final_stream_len_size);
+
+	char * files = (char *) malloc(sizeof(char) * final_stream_len);
+
+	snprintf(num_files_str, num_files_size + 1, "%d\n", num_files);
+	snprintf(final_stream_len_str, final_stream_len_size + 1, "%d\n", final_stream_len);
+
+	printf("num_files_str: %s\nfinal_stream_len_str: %s\n", num_files_str, final_stream_len_str);
+
+	int i;
+	int j = 0;
+
+	for (i = 0; i < final_stream_len_size; i++) {
+		files[i] = final_stream_len_str[i];
+		//printf("setting files[%d] to %c\n", i, stream_len_str[i]);
+	}
+
+	files[i] = ',';
+	i++;
+
+	//printf("files: [%s]\n", files);
+
+	for (j = 0; j < num_files_size; j++) {
+		files[i] = num_files_str[j];
+		i++;
+		//printf("setting files[%d] to %c\n", i, num_files_str[j]);
+	}
+	files[i] = ',';
+	i++;
+	//printf("files: [%s]\n", files);
+
 	while ((dp=readdir(dir)) != NULL) {
-		printf("File name: %s\n", dp->d_name);
-		int j = 0;
+
+		//printf("File name: %s, files is now \"%s\"\n", dp->d_name, files);
 		for (j = 0; j < strlen(dp->d_name); j++) {
+			//printf("dp->d_name's length is: %d\n", strlen(dp->d_name));
 			files[i] = dp->d_name[j];
 			i++;
 		}
 		files[i] = ',';
 		i++;
 	}
-	
+
 	printf("The files name is: %s\n", files);
 	
 	return files;
 }
-*/
+
 
 /*
  * Thread handler for a client's connection. Handles all requests for a client
@@ -125,6 +190,7 @@ char * readdir_handle_string(char * file_path, int stream_length, int num_files)
  */
 void *client_handler(void *arg)
 {
+	printf("In a new thread\n");
 	int client_fd = *((int *) arg); //client file descriptor for socket
 	char *buffer = (char *) malloc(sizeof(char) * BUF_SIZE); //buffer to hold client message 
 	char *partial_buffer = NULL;
@@ -172,14 +238,14 @@ void *client_handler(void *arg)
 			Protocol: <number of bytes to read>,<getattr>,<path to file>
 		*/
 		if (strcmp(op_type, "getattr") == 0) {
-            /* getattr
-             * Gets file information.
-             * Response form: <return_code>,<struct stat>
-             */
+            		/* getattr
+             		* Gets file information.
+             		* Response form: <return_code>,<struct stat>
+             		*/
 			printf("Got a getattr request\n");
 			char *path = strtok(NULL, ",");
-            char *absolute_path = strcat_dynamic(mount_path, path, 0); 
-	    	printf("Path: %s\n", absolute_path);
+            		char *absolute_path = strcat_dynamic(mount_path, path, 0); 
+	    		printf("Path: %s\n", absolute_path);
 			struct stat server_stats;
 			int ret = stat(absolute_path, &server_stats);
 
@@ -187,26 +253,22 @@ void *client_handler(void *arg)
 				perror("error in stat");
 			}
 
-            int ret_str_size = sizeof(struct stat) + 20;
-            char *ret_str = (char *) malloc(ret_str_size);
+			
+
+            		int ret_str_size = 300;
+            		char *ret_str = (char *) malloc(ret_str_size);
+
 
 			memset(ret_str, 0, ret_str_size);
-			snprintf(ret_str, 10, "%d,", ret);
-            
-            // Have to find the index where the "," is in the string, so we
-            // can append the bytes for the stat struct right after.
-            int comma_index = 0;
-            while (comma_index < ret_str_size) {
-                if (ret_str[comma_index] == ',') {
-                    break;
-                } else {
-                    comma_index++;
-                }
-            }
-            
-            ret_str = (char *) memcpy(ret_str + comma_index + 1, &server_stats, sizeof(struct stat));
+			snprintf(ret_str, 300, "%d,%d,%ld,%ld,%d,%ld,%d,%d,%ld,%ld,%ld,%ld,%ld,%ld,%ld", ret, errno,
+				server_stats.st_dev, server_stats.st_ino, server_stats.st_mode, server_stats.st_nlink, server_stats.st_uid, 
+				server_stats.st_gid, server_stats.st_rdev, server_stats.st_size, server_stats.st_atime, 
+				server_stats.st_mtime, server_stats.st_ctime, server_stats.st_blksize, server_stats.st_blocks);        
+		    	
+			printf("Result: %s\n", ret_str);
 
 			write(client_fd, ret_str, ret_str_size);
+			return NULL;
 		} 
 		
 		/* 
@@ -407,34 +469,27 @@ void *client_handler(void *arg)
 			}
 
 		} else if (strcmp(op_type, "readdir") == 0) {
+			// return is in the form "<num_entries>,<entry1>,<entry2>,...,<entryn>"
 			printf("Got a readdir request\n");	
 			char * path = strtok(NULL, ",");
-    		printf("Path: %s\n", path);
+    			printf("Path: %s\n", path);
     		
-    		char * ret_str = (char *) malloc(sizeof(char) * 10);
-    		//try to open the file path
-    		DIR * dir = opendir_handler(path);
-    		//write back null if not possible to read because the path is not opened
-    		if (dir == NULL) {
-    			perror("The directory does not exist or cannot be opened at this time\n");
-    			snprintf(ret_str, 10, "%d", -1);
-    			write(client_fd, ret_str, 10);
-    		}
-    		
-			struct dirent * dp;
-			
-			//check to see if we can read the directory. if so tell the client to read the directory on their end
-			if ((dp=readdir(dir)) != NULL) {
-				printf("The directory was read successfully\n");
-				snprintf(ret_str, 10, "%d", 0);
-				write(client_fd, ret_str, 10);
-			}
-			//if we cannot read the directory, then tell the client not to read the directory on their end
-			else {
-				perror("The directory was unable to be read\n");
-    			snprintf(ret_str, 10, "%d", -1);
-    			write(client_fd, ret_str, 10);
-			}
+    			char * ret_str = (char *) malloc(sizeof(char) * 10);
+    			//try to open the file path
+    			DIR * dir = opendir_handler(path);
+
+			//write back null if not possible to read because the path is not opened
+			if (dir == NULL) {
+	    			perror("The directory does not exist or cannot be opened at this time\n");
+	    			snprintf(ret_str, 10, "%d", -1);
+	    			write(client_fd, ret_str, 10);
+	    		}
+    			
+			int num_entries = readdir_handle_num_entries(path);
+			int stream_len = readdir_handle_length(path);
+			ret_str = readdir_handle_string(path, stream_len, num_entries);
+
+			write(client_fd, ret_str, stream_len);
     		
 		} else if (strcmp(op_type, "releasedir") == 0) {
 			// releasedir() takes one additional argument: the directory name.
@@ -465,7 +520,7 @@ void *client_handler(void *arg)
 		}
 
 	}
-
+	close(client_fd);
 	return NULL;
 }
 
@@ -552,8 +607,10 @@ int main(int argc, char **argv) {
     printf("Set mount_path to %s\n", mount_path);
 
 	//continues to accept connections for n amount of clients and any amount of tasks per client. Spawns a new worker thread for each task requested by the client.
-	while (client_sock_fd = accept(sock_fd, (struct sockaddr *) &client_addr,
-				&clilen)) {
+	while (1) {
+		printf("trying to accept\n");
+		client_sock_fd = accept(sock_fd, (struct sockaddr *) &client_addr, &clilen);
+		printf("accepted\n");
 		pthread_t thread_id;
 		if (pthread_create(&thread_id, NULL, &client_handler,
 					(void*) &client_sock_fd)) {
@@ -566,6 +623,10 @@ int main(int argc, char **argv) {
 		perror("Client connection was rejected");
 		return 1;
 	}
+	
+	printf("Not accepting any more stuff\n");
+
+
 
 
 	return 0;

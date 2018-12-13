@@ -10,6 +10,7 @@
 #include <time.h>
 #include <errno.h>
 
+#include <sys/ioctl.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/socket.h>
@@ -17,41 +18,113 @@
 
 //#define PORT 54321
 
-int server_fd = 0;
-int port = 0;
+//int server_fd = 0;
+//int port = 0;
+
+static int fasten()
+{
+	int port = 16269;
+	const char * hostname = "pwd.cs.rutgers.edu";
+	struct sockaddr_in address;
+	int sock = 0;
+	int read_ret;
+	struct sockaddr_in serv_addr;
+	
+	//puts the server's IP into the server_ip struct
+	struct hostent * server_ip = gethostbyname(hostname);
+	
+	char buffer[1024] = {0};
+
+	int try_to_connect;
+
+	//attempts to build a socket as a gateway to connect to the server
+	sock = socket(AF_INET, SOCK_STREAM, 0);
+	
+	//checks to see if the socket was successfully created
+	if (sock < 0) {
+		perror("socket failed");
+		return -1;
+	}
+
+	
+	//zeros out the server_addr struct
+	memset(&serv_addr, 0, sizeof(serv_addr));
+	
+	//sets the network address flag to AF_INET
+	serv_addr.sin_family = AF_INET;
+	
+	//converts the port from int to a network int and retrieves the endianness of the machine
+	serv_addr.sin_port = htons(port);
+	
+	//copies the bytes for the server's IP address into the server_addr struct
+	bcopy((char *) server_ip->h_addr, (char *) &serv_addr.sin_addr, server_ip->h_length);
+
+	try_to_connect = connect(sock, (struct sockaddr *) &serv_addr, sizeof(serv_addr));
+	if (try_to_connect != 0) {
+		perror("connect failed");
+		return -1; 
+	}
+	return sock;
+
+}
 
 static int snfs_getattr(const char *path, struct stat *fstats,
 		struct fuse_file_info *fi) {
+
+	int server_fd = fasten();
+	
+	if (server_fd == -1) {
+		perror("Failed to connect");
+		return -1;
+	}
+
 	printf("In the getattr function, path: %s\n", path);
+
 	int size = strlen(path) + 30;
 	char *message = (char *) malloc(sizeof(char) * (strlen(path) + 30));
 	memset(message, 0, strlen(path) + 30);
 	snprintf(message, size, "%d,getattr,%s", strlen(path)+30, path);
 	write(server_fd, message, size);
+	printf("Sent message to server %s\n", message);
 
-    int result_size = sizeof(struct stat) + 20;
+    int result_size = 300;
 	char *result = (char *) malloc(result_size);
 	memset(result, 0, result_size);
     
     read(server_fd, result, result_size);
+    	printf("Getattr result string: %s\n", result);
     
-    char *rest;    // Stores the rest of the string after we tokenize a part of it.
-    char *return_code = strtok_r(result, ",", &rest);
+	int return_code = atoi(strtok(result, ","));
+	errno = atoi(strtok(NULL, ","));
+	fstats->st_dev = atoi(strtok(NULL, ","));
+	fstats->st_ino = atoi(strtok(NULL, ","));
+	fstats->st_mode = atoi(strtok(NULL, ","));
+	fstats->st_nlink = atoi(strtok(NULL, ","));
+	fstats->st_uid = atoi(strtok(NULL, ","));
+	fstats->st_gid = atoi(strtok(NULL, ","));
+	fstats->st_rdev = atoi(strtok(NULL, ","));
+	fstats->st_size = atoi(strtok(NULL, ","));
+	fstats->st_atime = atoi(strtok(NULL, ","));
+	fstats->st_mtime = atoi(strtok(NULL, ","));
+	fstats->st_ctime = atoi(strtok(NULL, ","));
+	fstats->st_blksize = atoi(strtok(NULL, ","));
+	fstats->st_blocks = atoi(strtok(NULL, ","));
+	
+	close(server_fd);
+	
 
-    int return_int = atoi(return_code);
+	if (return_code == -1) {
+		return -errno;
+	}
+	return 0;
+    //int return_int = atoi(return_code);
     
-    printf("getattr returned %d\n", return_int);
-
+    //printf("getattr returned %d\n", return_int);
+/*
 	if (return_int != 0) {
 		return -errno;
 	}
-
-    // Once we tokenize once, the remaining part of the string will be a
-    // stat structure that we should set.
-    struct stat *stat_ptr;
-    stat_ptr = memcpy(fstats, rest, sizeof(struct stat));
-	
-	
+*/
 	return 0;
 }
 
@@ -251,10 +324,12 @@ static int snfs_opendir(const char * path, struct fuse_file_info * fi) {
 }
 
 */
-/*
+
 static int snfs_readdir(const char * path, void * buffer,
-		fuse_fill_dir_t filler, off_t offset,
-		struct fuse_file_info * fi) {
+	fuse_fill_dir_t filler, off_t offset,
+	struct fuse_file_info * fi) {
+
+	int server_fd = fasten();
 
 	int size = strlen(path) + 30;
 	char *message = (char *) malloc(sizeof(char) * (strlen(path) + 30));
@@ -262,39 +337,55 @@ static int snfs_readdir(const char * path, void * buffer,
 	snprintf(message, size, "%d,readdir,%s", strlen(path)+30, path);
 	write(server_fd, message, size);
 
-	char *result = (char *) malloc(sizeof(char) * 100);
-	memset(result, 0, 100);
-	read(server_fd, result, 100);
-	int server_return_code = atoi(result);
+	char* result;
+	char* prelim = (char*) malloc(10 * sizeof(char));
+	memset(result, 0, 10);
+	int bytes_read = 0;
+	bytes_read = read(server_fd, prelim, 10);
+	printf("prelim is: \"%s\"\n", prelim);
+	free(prelim);
+	printf("freed prelim\n");
 	
-	if (server_return_code < 0) {
-		printf("The server was unable to read the directory\n");
-	}
-	
-	else {
-		DIR * dir = opendir(path);
-		struct dirent * dp;
-		
-		if (dir == NULL) {
-   			perror("The directory does not exist or cannot be opened at this time\n");
-   			//snprintf(ret_str, 10, "%d", -1);
-    		//write(client_fd, ret_str, 10);
-    	}
+	if (bytes_read <= 0) {
 
-		else if (strcmp( path, "/" ) == 0) {
-				while ((dp = readdir(dir) != NULL)) {
-					filler(buffer, dp->d_name, NULL, 0);
-				}
-		} 
+	/*ioctl(server_fd, FIONREAD, &bytes_read);
+
+	printf("read %d bytes from server after readdir operation\n", bytes_read);
+	if (bytes_read > 0) {
+		result = read(server_fd, buffer, bytes_read);
+	} else { */
+		printf("The client was unable to read the response\n");
+		return 0;
 	}
-	
+
+	int stream_len = atoi(strtok(result, ","));
+
+	result = (char*) malloc(stream_len * sizeof(char));
+	memset(result, 0, stream_len);
+
+	bytes_read = read(server_fd, result, stream_len);
+
+	// since ret is in the form "<num_entries>,<entry1>,<entry2>,...,<entryn>"
+	// we parse each entry according to those properties
+
+	strtok(result, ",");
+	int num_entries = atoi(strtok(NULL, ","));
+	char* filename;
+
+	int i;
+	for (i = 0; i < num_entries; i++) {
+		filename = strtok(NULL, ",");
+		filler(buffer, filename, NULL, 0);
+        }
+		
 	return 0;
 }
-*/
-/*
+
+
 
 static int snfs_releasedir(const char * path, struct fuse_file_info * fi) {
-
+	printf("relesadir called\n");
+/*
 	int msg_size = strlen(path) + 60;
     	char *message = (char *) malloc(sizeof(char) * msg_size);
     	memset(message, 0, msg_size);
@@ -317,32 +408,13 @@ static int snfs_releasedir(const char * path, struct fuse_file_info * fi) {
 	if (client_return_code < 0) {
         	printf("WARNING: Consistency error on releasedir. Success on server but failure on client\n");
     	}
-	
+*/	
 	return 0;
 }
 
-
-*/
-
-/*
 static struct fuse_operations operations = {
-    .getattr	= snfs_getattr,
-    .truncate	= snfs_truncate,
-    .open		= snfs_open,
-    .write		= snfs_write,
-    .read		= snfs_read,
-    .flush		= snfs_flush,
-    .release	= snfs_release,
-    .create		= snfs_create,
-    .mkdir		= snfs_mkdir,
-    .opendir	= snfs_opendir,
-    .readdir	= snfs_readdir,
-    //.releasedir	= snfs_releasedir
-};
-*/
-
-static struct fuse_operations operations = {
-    .getattr = snfs_getattr
+    .getattr = snfs_getattr,
+    .readdir = snfs_readdir
 };
 
 int main(int argc, char **argv)
@@ -386,8 +458,9 @@ int main(int argc, char **argv)
 	printf("The hostname passed in by the user is: %s\n", hostname);
 	//printf("The directory passed in by the user is: %s\n", directory_path);
 */
+/*	
 	port = 16268;
-	const char * hostname = "kill.cs.rutgers.edu";
+	const char * hostname = "pwd.cs.rutgers.edu";
 	struct sockaddr_in address;
 	int sock = 0;
 	int read_ret;
@@ -409,7 +482,6 @@ int main(int argc, char **argv)
 		return 1;
 	}
 
-	server_fd = sock;
 	
 	//zeros out the server_addr struct
 	memset(&serv_addr, 0, sizeof(serv_addr));
@@ -428,6 +500,7 @@ int main(int argc, char **argv)
 		perror("connect failed");
 		return 1; 
 	}
+*/
 	
 	struct fuse_args args = FUSE_ARGS_INIT(0, NULL);
 	
