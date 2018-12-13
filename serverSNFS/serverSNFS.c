@@ -132,38 +132,14 @@ char * readdir_handle_string(char * file_path, int stream_length, int num_files)
 
 	int stream_len_size = num_digits(stream_length);
 
-	int final_stream_len = stream_length + num_files + 2 + num_files_size + stream_len_size;
+	int final_stream_len = stream_length + num_files;
 	int final_stream_len_size = num_digits(final_stream_len);
 	char *final_stream_len_str = (char *) malloc(sizeof(char) * final_stream_len_size);
 
 	char * files = (char *) malloc(sizeof(char) * final_stream_len);
 
-	snprintf(num_files_str, num_files_size + 1, "%d\n", num_files);
-	snprintf(final_stream_len_str, final_stream_len_size + 1, "%d\n", final_stream_len);
-
-	printf("num_files_str: %s\nfinal_stream_len_str: %s\n", num_files_str, final_stream_len_str);
-
 	int i;
 	int j = 0;
-
-	for (i = 0; i < final_stream_len_size; i++) {
-		files[i] = final_stream_len_str[i];
-		//printf("setting files[%d] to %c\n", i, stream_len_str[i]);
-	}
-
-	files[i] = ',';
-	i++;
-
-	//printf("files: [%s]\n", files);
-
-	for (j = 0; j < num_files_size; j++) {
-		files[i] = num_files_str[j];
-		i++;
-		//printf("setting files[%d] to %c\n", i, num_files_str[j]);
-	}
-	files[i] = ',';
-	i++;
-	//printf("files: [%s]\n", files);
 
 	while ((dp=readdir(dir)) != NULL) {
 
@@ -584,26 +560,40 @@ void *client_handler(void *arg)
 
 		} else if (strcmp(op_type, "readdir") == 0) {
 			// return is in the form "<num_entries>,<entry1>,<entry2>,...,<entryn>"
-			printf("Got a readdir request\n");
+			printf("The server received a readdir request\n");
 			char * path = strtok(NULL, ",");
-    			printf("Path: %s\n", path);
+    		printf("Path: %s\n", path);
             char *absolute_path = strcat_dynamic(mount_path, path, 0);
-    			char * ret_str = (char *) malloc(sizeof(char) * 10);
-    			//try to open the file path
-    			DIR * dir = opendir_handler(absolute_path);
+    		char * num_bytes_to_write = (char *) malloc(sizeof(char) * 10);
+    		char * num_entries_str = (char *) malloc(sizeof(char) * 10);
+    		char * ret_str;
+    		
+    		//try to open the file path
+    		DIR * dir = opendir_handler(absolute_path);
 
 			//write back null if not possible to read because the path is not opened
 			if (dir == NULL) {
 	    			perror("The directory does not exist or cannot be opened at this time\n");
 	    			snprintf(ret_str, 10, "%d", -1);
 	    			write(client_fd, ret_str, 10);
-	    		}
-
+	    	}
+	    	
 			int num_entries = readdir_handle_num_entries(absolute_path);
 			int stream_len = readdir_handle_length(absolute_path);
+			
+			memset(num_bytes_to_write, 0, 10);
+			snprintf(num_bytes_to_write, 10, "%d", stream_len);
+			printf("The client will read %s bytes of filenames\n", num_bytes_to_write);
+			write(client_fd, num_bytes_to_write, 10);
+			
+			memset(num_entries_str, 0, 10);
+			snprintf(num_entries_str, 10, "%d", num_entries);
+			printf("The client will read %s bytes of entries\n", num_entries_str);
+			write(client_fd, num_entries_str, 10);
+				
 			ret_str = readdir_handle_string(absolute_path, stream_len, num_entries);
-
-			write(client_fd, ret_str, 1000);
+			printf("Writing the readdir request to the client: %s\n", ret_str);
+			write(client_fd, ret_str, num_entries+stream_len);
 
 		} else if (strcmp(op_type, "releasedir") == 0) {
 			// releasedir() takes one additional argument: the directory name.

@@ -24,7 +24,7 @@
 static int fasten() {
 	printf("Attempting to fasten to the server\n");
 	int port = 16269;
-	const char * hostname = "kill.cs.rutgers.edu";
+	const char * hostname = "rm.cs.rutgers.edu";
 	struct sockaddr_in address;
 	int sock = 0;
 	int read_ret;
@@ -435,52 +435,48 @@ static int snfs_readdir(const char * path, void * buffer,
 	int server_fd = fasten();
 	int size = strlen(path) + 30;
 	char *message = (char *) malloc(sizeof(char) * (strlen(path) + 30));
+	char * num_bytes_to_read = (char *) malloc(sizeof(char) * 10);
+	char * num_entries_str = (char *) malloc(sizeof(char) * 10);
+	
 	memset(message, 0, strlen(path) + 30);
 	snprintf(message, size, "%d,readdir,%s", strlen(path)+30, path);
 	write(server_fd, message, size);
 
-	char* result = (char*) malloc(100 * sizeof(char));
-	char* prelim = (char*) malloc(1000 * sizeof(char));
-	memset(result, 0, 10);
-	int bytes_read = 0;
-	printf("About to read from the server\n");
-	bytes_read = read(server_fd, prelim, 10);
-	printf("The number of bytes read is: %d\n", bytes_read);
-	printf("prelim is: \"%s\"\n", prelim);
+	//the client will read the number of bytes needed to read the stream of file names
+	memset(num_bytes_to_read, 0, 10);
+	read(server_fd, num_bytes_to_read, 10);
+	printf("The client will read %s of bytes of filenames\n", num_bytes_to_read);
+	
+	//the client will read the number of files in the stream of file name
+	memset(num_entries_str, 0, 10);
+	read(server_fd, num_entries_str, 10);
+	printf("The client will read %s entries\n", num_entries_str);
 
-	if (bytes_read <= 0) {
-
-	/*ioctl(server_fd, FIONREAD, &bytes_read);
-
-	printf("read %d bytes from server after readdir operation\n", bytes_read);
-	if (bytes_read > 0) {
-		result = read(server_fd, buffer, bytes_read);
-	} else { */
-		printf("The client was unable to read the response\n");
-		return 0;
-	}
-
-	int stream_len = atoi(strtok(prelim, ","));
-	printf("The stream length is: %d\n", stream_len);
-
-	int num_entries = atoi(strtok(NULL, ","));
-
-	result = (char*) malloc(stream_len * sizeof(char));
-	memset(result, 0, stream_len);
-
-	//bytes_read = read(server_fd, result, stream_len);
-
-	// since ret is in the form "<num_entries>,<entry1>,<entry2>,...,<entryn>"
-	// we parse each entry according to those properties
-
-	//printf("%s\n", strtok(NULL, ","));
-	char* filename;
+	//convert the client files and names to ints
+	int stream_len = atoi(num_bytes_to_read);
+	int num_entries = atoi(num_entries_str);
+	printf("The client needs to read in a buffer of: %d contianed %d files\n", stream_len, num_entries);
+	
+	//prepare to read the from the server the buffer
+	int result_len = stream_len + num_entries;
+	char * result = (char*) malloc(result_len * sizeof(char));
+	memset(result, 0, result_len);
+	int bytes_read = read(server_fd, result, result_len);
+	printf("Read from the server: %s and read this many bytes %d\n", result, bytes_read);
+	
+	//tokenize all of the file names and have FUSE use filler to print them out to the terminal
+	char * file_name = strtok(result, ",");
+	printf("Filename: %s\n", file_name);
+	filler(buffer, file_name, NULL, 0);
 	int i;
 	for (i = 0; i < num_entries; i++) {
-		filename = strtok(NULL, ",");
-		printf("%s/n", filename);
-		filler(buffer, filename, NULL, 0);
-        }
+		file_name = strtok(NULL, ",");
+		printf("Filename: %s\n", file_name);
+		if (file_name == NULL) {
+			break;
+		}
+		filler(buffer, file_name, NULL, 0);
+	}
 
 	return 0;
 }
