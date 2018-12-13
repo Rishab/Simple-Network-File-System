@@ -21,48 +21,48 @@
 //int server_fd = 0;
 //int port = 0;
 
-static int fasten()
-{
+static int fasten() {
+	printf("Attempting to fasten to the server\n");
 	int port = 16269;
 	const char * hostname = "pwd.cs.rutgers.edu";
 	struct sockaddr_in address;
 	int sock = 0;
 	int read_ret;
 	struct sockaddr_in serv_addr;
-	
+
 	//puts the server's IP into the server_ip struct
 	struct hostent * server_ip = gethostbyname(hostname);
-	
+
 	char buffer[1024] = {0};
 
 	int try_to_connect;
 
 	//attempts to build a socket as a gateway to connect to the server
 	sock = socket(AF_INET, SOCK_STREAM, 0);
-	
+
 	//checks to see if the socket was successfully created
 	if (sock < 0) {
 		perror("socket failed");
 		return -1;
 	}
 
-	
+
 	//zeros out the server_addr struct
 	memset(&serv_addr, 0, sizeof(serv_addr));
-	
+
 	//sets the network address flag to AF_INET
 	serv_addr.sin_family = AF_INET;
-	
+
 	//converts the port from int to a network int and retrieves the endianness of the machine
 	serv_addr.sin_port = htons(port);
-	
+
 	//copies the bytes for the server's IP address into the server_addr struct
 	bcopy((char *) server_ip->h_addr, (char *) &serv_addr.sin_addr, server_ip->h_length);
 
 	try_to_connect = connect(sock, (struct sockaddr *) &serv_addr, sizeof(serv_addr));
 	if (try_to_connect != 0) {
 		perror("connect failed");
-		return -1; 
+		return -1;
 	}
 	return sock;
 
@@ -72,7 +72,7 @@ static int snfs_getattr(const char *path, struct stat *fstats,
 		struct fuse_file_info *fi) {
 
 	int server_fd = fasten();
-	
+
 	if (server_fd == -1) {
 		perror("Failed to connect");
 		return -1;
@@ -87,13 +87,13 @@ static int snfs_getattr(const char *path, struct stat *fstats,
 	write(server_fd, message, size);
 	printf("Sent message to server %s\n", message);
 
-    int result_size = 300;
+  int result_size = 300;
 	char *result = (char *) malloc(result_size);
 	memset(result, 0, result_size);
-    
-    read(server_fd, result, result_size);
-    	printf("Getattr result string: %s\n", result);
-    
+
+  read(server_fd, result, result_size);
+  printf("Getattr result string: %s\n", result);
+
 	int return_code = atoi(strtok(result, ","));
 	errno = atoi(strtok(NULL, ","));
 	fstats->st_dev = atoi(strtok(NULL, ","));
@@ -109,22 +109,13 @@ static int snfs_getattr(const char *path, struct stat *fstats,
 	fstats->st_ctime = atoi(strtok(NULL, ","));
 	fstats->st_blksize = atoi(strtok(NULL, ","));
 	fstats->st_blocks = atoi(strtok(NULL, ","));
-	
+
 	close(server_fd);
-	
 
 	if (return_code == -1) {
 		return -errno;
 	}
-	return 0;
-    //int return_int = atoi(return_code);
-    
-    //printf("getattr returned %d\n", return_int);
-/*
-	if (return_int != 0) {
-		return -errno;
-	}
-*/
+
 	return 0;
 }
 
@@ -170,9 +161,9 @@ static int snfs_open(const char * path, struct fuse_file_info * fi) {
         perror("Server error on open\n");
         return server_return;
     }
-    
+
     int fd = open(path, fi->flags);
-    
+
     if (fd < 0) {
         perror("Client error on open\n");
         return fd;
@@ -181,7 +172,7 @@ static int snfs_open(const char * path, struct fuse_file_info * fi) {
 	return 0;
 }
 
-static int snfs_read(const char * path, char * buffer, size_t size, off_t offset, struct fuse_file_info * fi) 
+static int snfs_read(const char * path, char * buffer, size_t size, off_t offset, struct fuse_file_info * fi)
 {
     printf("Read functionn called by user\n");
     int msg_size = strlen(path) + 60;
@@ -202,7 +193,7 @@ static int snfs_read(const char * path, char * buffer, size_t size, off_t offset
         perror("Server error on read\n");
         return result_code;
     }
-    
+
     int fd;
 
     if (fi == NULL) {
@@ -220,7 +211,7 @@ static int snfs_read(const char * path, char * buffer, size_t size, off_t offset
     if (strcmp(buffer, read_buffer) != 0) {
         printf("WARNING: the read operation succeeded, but there is a consistency error between client and server. Data may not match up on future operations.\n");
     }
-    
+
     if (fi == NULL) {
         close(fd);
     }
@@ -239,7 +230,7 @@ static int snfs_write(const char * path, const char * buffer, size_t size, off_t
     char *result = (char *) malloc(sizeof(char) * 20);
     memset(result, 0, 20);
     read(server_fd, result, 20);
-    
+
     int server_return_code = atoi(result);
     if (server_return_code < 0) {
         perror("Server error on write\n");
@@ -255,17 +246,17 @@ static int snfs_write(const char * path, const char * buffer, size_t size, off_t
     }
 
     int client_return_code = pwrite(fd, buffer, size, offset);
-    
+
     if (fi == NULL) {
         close(fd);
     }
-    
+
     if (client_return_code != server_return_code) {
         printf("WARNING: Consistency error on write. Data may not be what you expect it to be in the future\n");
     }
 
     return client_return_code;
-} 
+}
 
 static int snfs_flush(const char * path, struct fuse_file_info * fi) {
 	//called on each close; write back data and return errors
@@ -273,7 +264,7 @@ static int snfs_flush(const char * path, struct fuse_file_info * fi) {
 }
 
 static int snfs_release(const char * path, struct fuse_file_info * fi) {
-	return 0;
+	return 0;erver_ip->h_a
 }
 
 static int snfs_create(const char * path, mode_t filemodes, struct fuse_file_info * fi) {
@@ -299,11 +290,11 @@ static int snfs_mkdir(const char * path, mode_t dirmode) {
 
 	//write on server was successful; write on client
 	int client_return_code = mkdir(path, dirmode);
-	
+
 	if (client_return_code < 0) {
         	printf("WARNING: Consistency error on mkdir. Success on server but failure on client\n");
     	}
-	
+
 	return 0;
 }
 
@@ -329,23 +320,24 @@ static int snfs_readdir(const char * path, void * buffer,
 	fuse_fill_dir_t filler, off_t offset,
 	struct fuse_file_info * fi) {
 
-	int server_fd = fasten();
+	printf("Client is making a call to readdir\n");
 
+	int server_fd = fasten();
 	int size = strlen(path) + 30;
 	char *message = (char *) malloc(sizeof(char) * (strlen(path) + 30));
 	memset(message, 0, strlen(path) + 30);
 	snprintf(message, size, "%d,readdir,%s", strlen(path)+30, path);
 	write(server_fd, message, size);
 
-	char* result;
-	char* prelim = (char*) malloc(10 * sizeof(char));
+	char* result = (char*) malloc(100 * sizeof(char));
+	char* prelim = (char*) malloc(1000 * sizeof(char));
 	memset(result, 0, 10);
 	int bytes_read = 0;
+	printf("About to read from the server\n");
 	bytes_read = read(server_fd, prelim, 10);
+	printf("The number of bytes read is: %d\n", bytes_read);
 	printf("prelim is: \"%s\"\n", prelim);
-	free(prelim);
-	printf("freed prelim\n");
-	
+
 	if (bytes_read <= 0) {
 
 	/*ioctl(server_fd, FIONREAD, &bytes_read);
@@ -358,26 +350,28 @@ static int snfs_readdir(const char * path, void * buffer,
 		return 0;
 	}
 
-	int stream_len = atoi(strtok(result, ","));
+	int stream_len = atoi(strtok(prelim, ","));
+	printf("The stream length is: %d\n", stream_len);
+
+	int num_entries = atoi(strtok(NULL, ","));
 
 	result = (char*) malloc(stream_len * sizeof(char));
 	memset(result, 0, stream_len);
 
-	bytes_read = read(server_fd, result, stream_len);
+	//bytes_read = read(server_fd, result, stream_len);
 
 	// since ret is in the form "<num_entries>,<entry1>,<entry2>,...,<entryn>"
 	// we parse each entry according to those properties
 
-	strtok(result, ",");
-	int num_entries = atoi(strtok(NULL, ","));
+	//printf("%s\n", strtok(NULL, ","));
 	char* filename;
-
 	int i;
 	for (i = 0; i < num_entries; i++) {
 		filename = strtok(NULL, ",");
+		printf("%s/n", filename);
 		filler(buffer, filename, NULL, 0);
         }
-		
+
 	return 0;
 }
 
@@ -404,11 +398,11 @@ static int snfs_releasedir(const char * path, struct fuse_file_info * fi) {
 
 	//releasedir on server was successful; releasedir (rmdir) on client
 	int client_return_code = rmdir(path);
-	
+
 	if (client_return_code < 0) {
         	printf("WARNING: Consistency error on releasedir. Success on server but failure on client\n");
     	}
-*/	
+*/
 	return 0;
 }
 
@@ -428,7 +422,7 @@ int main(int argc, char **argv)
 
 	char * directory_path; //contains the file path where the files are stored by the server
 	char * hostname; //contains the name of the hostname where serverSNFS is located
-	
+
 	//parse the arguments and put them in variables
 	int i;
 	for (i = 0; i < argc; i++) {
@@ -450,7 +444,7 @@ int main(int argc, char **argv)
 	if (port < 0) {
 		perror("The user did not pass in a proper port\n");
 	}
-	
+
 	else if (hostname == NULL) {
 		perror("Server was not initialized?\n");
 	}
@@ -458,56 +452,56 @@ int main(int argc, char **argv)
 	printf("The hostname passed in by the user is: %s\n", hostname);
 	//printf("The directory passed in by the user is: %s\n", directory_path);
 */
-/*	
+/*
 	port = 16268;
 	const char * hostname = "pwd.cs.rutgers.edu";
 	struct sockaddr_in address;
 	int sock = 0;
 	int read_ret;
 	struct sockaddr_in serv_addr;
-	
+
 	//puts the server's IP into the server_ip struct
 	struct hostent * server_ip = gethostbyname(hostname);
-	
+
 	char buffer[1024] = {0};
 
 	int try_to_connect;
 
 	//attempts to build a socket as a gateway to connect to the server
 	sock = socket(AF_INET, SOCK_STREAM, 0);
-	
+
 	//checks to see if the socket was successfully created
 	if (sock < 0) {
 		perror("socket failed");
 		return 1;
 	}
 
-	
+
 	//zeros out the server_addr struct
 	memset(&serv_addr, 0, sizeof(serv_addr));
-	
+
 	//sets the network address flag to AF_INET
 	serv_addr.sin_family = AF_INET;
-	
+
 	//converts the port from int to a network int and retrieves the endianness of the machine
 	serv_addr.sin_port = htons(port);
-	
+
 	//copies the bytes for the server's IP address into the server_addr struct
 	bcopy((char *) server_ip->h_addr, (char *) &serv_addr.sin_addr, server_ip->h_length);
 
 	try_to_connect = connect(sock, (struct sockaddr *) &serv_addr, sizeof(serv_addr));
 	if (try_to_connect != 0) {
 		perror("connect failed");
-		return 1; 
+		return 1;
 	}
 */
-	
+
 	struct fuse_args args = FUSE_ARGS_INIT(0, NULL);
-	
+
 	fuse_opt_parse(&args, NULL, NULL, NULL);
 	fuse_opt_add_arg(&args, "/freespace/local/mk_serv/");
-	
+
 	printf("Successfully connected to the server\n");
-	
+
 	return fuse_main(argc, argv, &operations, NULL);
 }
