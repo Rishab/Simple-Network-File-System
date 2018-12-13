@@ -268,45 +268,64 @@ static int snfs_read(const char * path, char * buffer, size_t size, off_t offset
     }
 }
 
-/*
+/* write
+ * Request form: <msg_len>,write,1,<path>,<size>,<offset>,<buffer>
+ *          OR:  <msg_len>write,0,<fd>,<size>,<offset>,<buffer>
+ * Response form: <response_code>,<errno>
+ */
 static int snfs_write(const char * path, const char * buffer, size_t size, off_t offset, struct fuse_file_info * fi)
 {
-    int msg_size = strlen(path) + size + 60;
-    char *message = (char *) malloc(sizeof(char) * msg_size);
-    memset(message, 0, msg_size);
-    snprintf(message, msg_size, "%d,write,%s,%s,%d,%d", msg_size, path, buffer, (int) size, (int) offset);
-    write(server_fd, message, msg_size);
+    printf("Write function called by user\n");
 
-    char *result = (char *) malloc(sizeof(char) * 20);
-    memset(result, 0, 20);
-    read(server_fd, result, 20);
+    int server_fd = fasten();
 
-    int server_return_code = atoi(result);
-    if (server_return_code < 0) {
-        perror("Server error on write\n");
-        return server_return_code;
+    if (server_fd == -1) {
+        return -1;
     }
 
-    int fd;
-
+    // Copy size bytes from buffer into a null terminated array.
+    char *padded_buffer = (char *) malloc(sizeof(char) * (size + 1));
+    memset(padded_buffer, 0, size + 1);
+    strncpy(padded_buffer, buffer, size);
+    
     if (fi == NULL) {
-        fd = open(path, fi->flags);
+        // No file info, so we will have to open up the path and write.
+        int msg_size = strlen(path) + size + 50;
+        char *message = (char *) malloc(sizeof(char) * msg_size);    
+        memset(message, 0, msg_size);
+        snprintf(message, msg_size, "%d,write,1,%s,%d,%d,%s", msg_size, path, size, offset, padded_buffer);
+        printf("Command is: %s\n", message);
+        write(server_fd, message, msg_size);
     } else {
-        fd = fi->fh;
+        // File info was passed in, so we can use the handle from fi.
+        int msg_size = size + 60;
+        char *message = (char *) malloc(sizeof(char) * msg_size);
+        memset(message, 0, msg_size);
+        snprintf(message, msg_size, "%d,write,0,%d,%d,%d,%s", msg_size, fi->fh, size, offset, padded_buffer);
+        printf("Command is: %s\n", message);
+        write(server_fd, message, msg_size);
+    }
+    
+    int result_size = 30;
+    char *result = (char *) malloc(sizeof(char) * result_size);
+    memset(result, 0, result_size);
+    read(server_fd, result, result_size);
+    
+    printf("Result: %s\n", result);
+
+    close(server_fd);           // Done reading from the server.
+
+    int result_code = atoi(strtok(result, ","));
+
+    if (result_code < 0) {
+        errno = atoi(strtok(NULL, ","));
+        return -errno;
     }
 
-    int client_return_code = pwrite(fd, buffer, size, offset);
-
-    if (fi == NULL) {
-        close(fd);
-    }
-
-    if (client_return_code != server_return_code) {
-        printf("WARNING: Consistency error on write. Data may not be what you expect it to be in the future\n");
-    }
-
-    return client_return_code;
+    return result_code;
 }
+
+/*
 
 static int snfs_flush(const char * path, struct fuse_file_info * fi) {
 	//called on each close; write back data and return errors
@@ -503,7 +522,8 @@ static struct fuse_operations operations = {
     .truncate = snfs_truncate,
     .open     = snfs_open,
     .read     = snfs_read,
-    .create   = snfs_create
+    .create   = snfs_create,
+    .write    = snfs_write
 };
 
 int main(int argc, char **argv)

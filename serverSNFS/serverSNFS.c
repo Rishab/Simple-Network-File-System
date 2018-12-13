@@ -226,12 +226,15 @@ void *client_handler(void *arg)
 		}
 		printf("Command: %s\n", buffer);
 
+        // Make a copy of the command for potential future use.
+        char *command_copy = (char *) malloc(sizeof(char) * num_bytes);
+        strncpy(command_copy, buffer, num_bytes);
+
 		// Now that we have the whole command string, we can parse it to find
 		// the operation type.
+		int cmd_length = atoi(strtok(buffer, ","));
 
-		char *size = strtok(buffer, ",");
 		char *op_type = strtok(NULL, ",");
-
 		/*
 			Similar to stat(). Getattr retrieves the status of the file in the given file path.
 			Returns 0 if successful and -1 if failed.
@@ -406,6 +409,11 @@ void *client_handler(void *arg)
                 return NULL;
             }
             
+            if (is_file_unopened) {
+                // If the file started closed, make sure it ends closed.
+                close(fd);
+            }
+
             snprintf(result, result_size, "%d,0,%s", read_bytes, buffer);
             write(client_fd, result, result_size);
             return NULL;    
@@ -415,28 +423,69 @@ void *client_handler(void *arg)
 			// to write, the number of bytes to write from the buffer, and the
 			// offset from the beginning of the file to write to.
 			printf("Got a write request\n");
-
-            char *write_path = strtok(NULL, ",");
-            char *buffer = strtok(NULL, ",");
-            char *size_str = strtok(NULL, ",");
-            char *offset_str = strtok(NULL, ",");
-
-            int size = atoi(size_str);
-            int offset = atoi(offset_str);
-
-            int fd = open(write_path, O_RDWR);
-            if (fd < 0) {
-                char *result = (char *) malloc(sizeof(char) * (size + 20));
-                memset(result, 0, size + 20);
-                snprintf(result, size + 20, "%d", fd);
-                write(client_fd, result, size + 20);
+            
+            int is_file_unopened = atoi(strtok(NULL, ","));
+            int fd;
+            
+            if (is_file_unopened) {
+                // Unknown file descriptor. Need to determine from path.
+                char *path = strtok(NULL, ",");
+                char *absolute_path = strcat_dynamic(mount_path, path, 0);
+                fd = open(absolute_path, O_WRONLY);
             } else {
-                int write_result = pwrite(fd, buffer, size, offset);
-                char *result = (char *) malloc(sizeof(char) * 20);
-                memset(result, 0, 20);
-                snprintf(result, 20, "%d", write_result);
-                write(client_fd, result, 20);
+                // Working with already known file descriptor.
+                fd = atoi(strtok(NULL, ","));
             }
+            
+            int result_size = 30;
+            printf("fd: %d\n", fd);
+            if (fd == -1) {
+                char *result = (char *) malloc(sizeof(char) * result_size);
+                memset(result, 0, result_size);
+                snprintf(result, result_size, "%d,%d", fd, errno);
+                write(client_fd, result, result_size);
+                return NULL;
+            }
+
+            printf("command copy: %s\n", command_copy);
+            char *rest = (char *) malloc(sizeof(char) * num_bytes);
+            
+            // Go through all the arguments that we know so we can get to
+            // the size.
+            strtok_r(command_copy, ",", &rest);     // Get command length
+            strtok_r(rest, ",", &rest);             // Get command type
+            strtok_r(rest, ",", &rest);             // Get opened or unopened file status
+            strtok_r(rest, ",", &rest);             // Get fd/path
+
+            int size = atoi(strtok_r(rest, ",", &rest));
+            int offset = atoi(strtok_r(rest, ",", &rest));
+            char *write_buf = rest;
+
+            printf("Write buffer: %s\n", write_buf);
+
+            int write_bytes = pwrite(fd, write_buf, size, offset);
+            
+            if (write_bytes < 0) {
+                char *result = (char *) malloc(sizeof(char) * result_size);
+                memset(result, 0, result_size);
+                snprintf(result, result_size, "%d,%d", write_bytes, errno);
+                write(client_fd, result, result_size);
+                if (is_file_unopened) {
+                    close(fd);
+                }
+                return NULL;
+            }
+
+            char *result = (char *) malloc(sizeof(char) * result_size);
+            memset(result, 0, result_size);
+            snprintf(result, result_size, "%d,0", write_bytes);
+            write(client_fd, result, result_size);
+            if (is_file_unopened) {
+                close(fd);
+            }
+
+            return NULL;
+
 		} else if (strcmp(op_type, "flush") == 0) {
 			// flush() takes one additional argument: the filepath.
 			printf("Got a flush request\n");
