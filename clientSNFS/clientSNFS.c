@@ -19,12 +19,12 @@
 //#define PORT 54321
 
 //int server_fd = 0;
-//int port = 0;
+int port = 0; //port number to connect to the server with
+const char * hostname = NULL; //contains the name of the machine where the server is located
+const char * mount_path = NULL; //path where the client can perform operations on the server
 
 static int fasten() {
 	printf("Attempting to fasten to the server\n");
-	int port = 16275;
-	const char * hostname = "kill.cs.rutgers.edu";
 	struct sockaddr_in address;
 	int sock = 0;
 	int read_ret;
@@ -599,15 +599,12 @@ static struct fuse_operations operations = {
 
 int main(int argc, char **argv)
 {
-/*
+
 	//check to see if the correct number of arguments are passed in
 	if (argc != 7) {
 		perror("Error: The user did not input the correct number of arugments\n");
-		exit(1);
+		exit(0);
 	}
-
-	char * directory_path; //contains the file path where the files are stored by the server
-	char * hostname; //contains the name of the hostname where serverSNFS is located
 
 	//parse the arguments and put them in variables
 	int i;
@@ -622,72 +619,35 @@ int main(int argc, char **argv)
 		}
 		else if (strcmp("-mount", argv[i]) == 0) {
 			i++;
-			directory_path = argv[i];
+			mount_path = argv[i];
 		}
 	}
 
 	//check to see that valid port number was passed in by the user
-	if (port < 0) {
+	if (port <= 0) {
 		perror("The user did not pass in a proper port\n");
+		exit(0);
 	}
 
 	else if (hostname == NULL) {
 		perror("Server was not initialized?\n");
+		exit(0);
 	}
+	else if (mount_path == NULL) {
+		perror("Mount path was not initialized\n");
+		exit(0);
+	}
+	
 	printf("The port passed in by the user is: %d\n", port);
 	printf("The hostname passed in by the user is: %s\n", hostname);
-	//printf("The directory passed in by the user is: %s\n", directory_path);
-*/
-/*
-	port = 16268;
-	const char * hostname = "pwd.cs.rutgers.edu";
-	struct sockaddr_in address;
-	int sock = 0;
-	int read_ret;
-	struct sockaddr_in serv_addr;
-
-	//puts the server's IP into the server_ip struct
-	struct hostent * server_ip = gethostbyname(hostname);
-
-	char buffer[1024] = {0};
-
-	int try_to_connect;
-
-	//attempts to build a socket as a gateway to connect to the server
-	sock = socket(AF_INET, SOCK_STREAM, 0);
-
-	//checks to see if the socket was successfully created
-	if (sock < 0) {
-		perror("socket failed");
-		return 1;
-	}
-
-
-	//zeros out the server_addr struct
-	memset(&serv_addr, 0, sizeof(serv_addr));
-
-	//sets the network address flag to AF_INET
-	serv_addr.sin_family = AF_INET;
-
-	//converts the port from int to a network int and retrieves the endianness of the machine
-	serv_addr.sin_port = htons(port);
-
-	//copies the bytes for the server's IP address into the server_addr struct
-	bcopy((char *) server_ip->h_addr, (char *) &serv_addr.sin_addr, server_ip->h_length);
-
-	try_to_connect = connect(sock, (struct sockaddr *) &serv_addr, sizeof(serv_addr));
-	if (try_to_connect != 0) {
-		perror("connect failed");
-		return 1;
-	}
-*/
+	printf("The mount path passed in by the user is: %s\n", mount_path);
 
 	struct fuse_args args = FUSE_ARGS_INIT(0, NULL);
 
 	fuse_opt_parse(&args, NULL, NULL, NULL);
-	fuse_opt_add_arg(&args, "/freespace/local/mk_serv/");
+	fuse_opt_add_arg(&args, "./clientSNFS");
+	fuse_opt_add_arg(&args, "-f");
+	fuse_opt_add_arg(&args, mount_path);
 
-	printf("Successfully connected to the server\n");
-
-	return fuse_main(argc, argv, &operations, NULL);
+	return fuse_main(args.argc, args.argv, &operations, NULL);
 }
