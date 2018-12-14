@@ -24,7 +24,7 @@
 static int fasten() {
 	printf("Attempting to fasten to the server\n");
 	int port = 16275;
-	const char * hostname = "rm.cs.rutgers.edu";
+	const char * hostname = "kill.cs.rutgers.edu";
 	struct sockaddr_in address;
 	int sock = 0;
 	int read_ret;
@@ -33,7 +33,7 @@ static int fasten() {
 	//puts the server's IP into the server_ip struct
 	struct hostent * server_ip = gethostbyname(hostname);
 
-	char buffer[1024] = {0};
+	//char buffer[1024] = {0};
 
 	int try_to_connect;
 
@@ -293,7 +293,7 @@ static int snfs_write(const char * path, const char * buffer, size_t size, off_t
         int msg_size = strlen(path) + size + 50;
         char *message = (char *) malloc(sizeof(char) * msg_size);    
         memset(message, 0, msg_size);
-        snprintf(message, msg_size, "%d,write,1,%s,%d,%d,%s", msg_size, path, size, offset, padded_buffer);
+        snprintf(message, msg_size, "%d,write,1,%s,%d,%d,%s", msg_size, path, (int) size, (int) offset, padded_buffer);
         printf("Command is: %s\n", message);
         write(server_fd, message, msg_size);
     } else {
@@ -447,22 +447,45 @@ static int snfs_mkdir(const char * path, mode_t dirmode) {
 	return 0;
 }
 
-
+/* opendir
+ * Request form: <msg_len>,opendir,<path>
+ * Response form: <return_code>,<errno>
+ */
 static int snfs_opendir(const char * path, struct fuse_file_info * fi) {
 	//check if opendir is permitted?
 	//should return the DIR pointer to fuse_file_info?
 	printf("Making an opendir request\n");
-	/*int size = strlen(path) + 30;
-	char *message = (char *) malloc(sizeof(char) * (strlen(path) + 30));
-	memset(message, 0, strlen(path) + 30);
-	snprintf(message, size, "%d,opendir,%s", strlen(path)+30, path);
-	write(server_fd, message, size);
 
-	char *result = (char *) malloc(sizeof(char) * 100);
-	memset(result, 0, 100);
-	read(server_fd, result, 100);
-	printf("%d\n");*/
-	return 0;
+    int server_fd = fasten();
+
+    if (server_fd == -1) {
+        return -1;
+    }
+
+    int msg_size = strlen(path) + 30;
+    char *message = (char *) malloc(sizeof(char) * msg_size);
+    memset(message, 0, msg_size);
+    snprintf(message, msg_size, "%d,opendir,%s", msg_size, path);
+    write(server_fd, message, msg_size);
+
+    
+    int res_size = 30;
+    char *result = (char *) malloc(sizeof(char) * res_size);
+    memset(result, 0, res_size);
+    read(server_fd, result, res_size);
+
+    close(server_fd);
+
+    int result_code = atoi(strtok(result, ","));
+
+    if (result_code == -1) {
+        errno = atoi(strtok(NULL, ","));
+        printf("Error on opendir with code: %d\n", errno);
+        return -errno;
+    }
+
+    fi->fh = result_code;
+    return 0;
 }
 
 
@@ -522,29 +545,41 @@ static int snfs_readdir(const char * path, void * buffer,
 }
 
 
-
+/* releasedir
+ * Request code: <msg_len>,releasedir,<dir_handle>
+ * Response code: <return_code>,<errno>
+ */
 static int snfs_releasedir(const char * path, struct fuse_file_info * fi) {
 	printf("releasedir called\n");
-	/*int server_fd = fasten();
-	int msg_size = strlen(path) + sizeof(mode_t) + 60;
+
+    int server_fd = fasten();
+	
+    if (server_fd == -1) {
+        return -1;
+    }
+
+    int msg_size = 30;
     char *message = (char *) malloc(sizeof(char) * msg_size);
     memset(message, 0, msg_size);
-	snprintf(message, msg_size, "%d,releasedir,%s", msg_size, path);
-	printf("Writing: %s to the server\n", message);
+    snprintf(message, msg_size, "%d,releasedir,%d", msg_size, fi->fh);
     write(server_fd, message, msg_size);
 
-    char *result = (char *) malloc(sizeof(char) * 30);
-    memset(result, 0, 30);
-    read(server_fd, result, 30);
-    printf("String returned from the server: %s\n", result);
+    int res_size = 30;
+    char *result = (char *) malloc(sizeof(char) * res_size);
+    memset(result, 0, res_size);
+    read(server_fd, result, res_size);
+    
+    close(server_fd);
 
-	int result_code = atoi(strtok(result, ","));
+    int result_code = atoi(strtok(result, ","));
+
     if (result_code == -1) {
         errno = atoi(strtok(NULL, ","));
-        printf("The value of errno is: %d\n", errno);
+        printf("Error on releasedir with code: %d\n", errno);
         return -errno;
-    }*/
-	return 0;
+    }
+
+    return 0;
 }
 
 static struct fuse_operations operations = {

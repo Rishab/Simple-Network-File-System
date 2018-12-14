@@ -561,22 +561,23 @@ void *client_handler(void *arg)
 			// opendir() takes one additional argument: the directory name.
 			printf("Got an opendir request\n");
 			char * path = strtok(NULL, ",");
-			printf("Path: %s\n", path);
+            char *absolute_path = strcat_dynamic(mount_path, path, 0);
+			printf("Path: %s\n", absolute_path);
+            
+            int fd = open(absolute_path, O_RDONLY);
 
-			DIR * result = opendir_handler(path);
+            int res_size = 30;
+            char *result = (char *) malloc(sizeof(char) * res_size);
+            memset(result, 0, res_size);
 
-			char *ret_str = (char *) malloc(sizeof(int) * 10);
-			memset(ret_str, 0, 10);
+            if (fd == -1) {
+                snprintf(result, res_size, "%d,%d", fd, errno);
+            } else {
+                snprintf(result, res_size, "%d,0", fd);
+            }
 
-			if (result == NULL) {
-				perror("opendir did not open properly\n");
-				snprintf(ret_str, 10, "%d", 0);
-				write(client_fd, ret_str, 10);
-			}
-			else {
-				snprintf(ret_str, 10, "%d", -1);
-				write(client_fd, ret_str, 10);
-			}
+            write(client_fd, result, res_size);
+            return NULL;
 
 		} else if (strcmp(op_type, "readdir") == 0) {
 			// return is in the form "<num_entries>,<entry1>,<entry2>,...,<entryn>"
@@ -620,24 +621,23 @@ void *client_handler(void *arg)
 		} else if (strcmp(op_type, "releasedir") == 0) {
 			// releasedir() takes one additional argument: the directory name.
 			printf("Got a releasedir request\n");
-
-			char* path = strtok(NULL, ",");
-			printf("path: %s\n", path);
-
-			int result_code = closedir(path);
-			char *result = (char *) malloc(sizeof(char) * 30);
-            memset(result, 0, 30);
-			
-			printf("Code returned by server is: %d\n", result_code);
-			if (result_code == 0) {
-                snprintf(result, 30, "%d,0", result_code);
-            } else {
-                snprintf(result, 30, "%d,%d", result_code, errno);
-            }
             
-            write(client_fd, result, 30); 
+            int fd = atoi(strtok(NULL, ","));
 
-			return NULL;
+            int close_result = close(fd);
+
+            int res_size = 30;
+            char *result = (char *) malloc(sizeof(char) * res_size);
+            memset(result, 0, res_size);
+
+            if (close_result == -1) {
+                snprintf(result, res_size, "%d,%d", close_result, errno);
+            } else {
+                snprintf(result, res_size, "%d,0", close_result);
+            }
+
+            write(client_fd, result, res_size);
+            return NULL;
 		}
 
 		/*
