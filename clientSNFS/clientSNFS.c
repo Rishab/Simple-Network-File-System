@@ -330,11 +330,53 @@ static int snfs_write(const char * path, const char * buffer, size_t size, off_t
 static int snfs_flush(const char * path, struct fuse_file_info * fi) {
 	//called on each close; write back data and return errors
 	printf("Making a flush request\n");
+	
+	//connect the command to the server
+	int server_fd = fasten();
+	
+	int size = strlen(path) + 30;
+	char * message = (char *) malloc(sizeof(char) * size);
+	memset(message, 0, size);
+	snprintf(message, size, "%d,flush,%s", size, path);
+	write(server_fd, message, size);
+	
+	read(server_fd, message, size);
+	
 	return 0;
 }
 
 static int snfs_release(const char * path, struct fuse_file_info * fi) {
 	printf("Making a release request\n");
+	
+	//connect the command to the server
+    int server_fd = fasten(); 
+    
+    //check to see if the file has already been released
+    if (fi == NULL) {
+    	printf("File is already released\n");
+    	return 0;
+    }
+	
+	//set up the message to send to the server that includes the file descriptor
+    int size = 30;
+    char *message = (char *) malloc(sizeof(char) * size);
+    memset(message, 0, size);
+    snprintf(message, size, "%d,release,%d", size, fi->fh);
+    write(server_fd, message, size);
+    
+	//check to see if the file closed successfully
+    char *result = (char *) malloc(sizeof(char) * 30);
+    memset(result, 0, 30);
+    read(server_fd, result, 30);
+    printf("Release result: %s\n", result);
+
+    int return_code = atoi(strtok(result, ","));
+    
+    if (return_code == -1) {
+        errno = atoi(strtok(NULL, ","));
+        return -errno;
+    }
+
 	return 0;
 }
 
@@ -483,7 +525,7 @@ static int snfs_readdir(const char * path, void * buffer,
 
 static int snfs_releasedir(const char * path, struct fuse_file_info * fi) {
 	printf("releasedir called\n");
-	int server_fd = fasten();
+	/*int server_fd = fasten();
 	int msg_size = strlen(path) + sizeof(mode_t) + 60;
     char *message = (char *) malloc(sizeof(char) * msg_size);
     memset(message, 0, msg_size);
@@ -501,7 +543,7 @@ static int snfs_releasedir(const char * path, struct fuse_file_info * fi) {
         errno = atoi(strtok(NULL, ","));
         printf("The value of errno is: %d\n", errno);
         return -errno;
-    }
+    }*/
 	return 0;
 }
 

@@ -467,26 +467,33 @@ void *client_handler(void *arg)
 			printf("Got a flush request\n");
 			char * flush_path = strtok(NULL, ",");
 			printf("Path: %s\n", flush_path);
-
-			int return_code = fflush(flush_path);
-
-			char *ret_str = ((char *) malloc(20));
-			memset(ret_str, 0, 20);
-			snprintf(ret_str, 20, "%d", return_code);
-			write(client_fd, ret_str, 20);
+			
+            write(client_fd, "1", 30);
+            
+            return NULL;
 
 		} else if (strcmp(op_type, "release") == 0) {
 			// release() takes one additional argument: the filepath.
 			printf("Got a release request\n");
-			char * release_path = strtok(NULL, ",");
-			printf("Path: %s\n", release_path);
+			
+            int file_descriptor = atoi(strtok(NULL, ","));
+            printf("File descriptor: %d\n", file_descriptor);
 
-			int return_code = remove(release_path);
-
-			char *ret_str = ((char *) malloc(20));
-			memset(ret_str, 0, 20);
-			snprintf(ret_str, 20, "%d", return_code);
-			write(client_fd, ret_str, 20);
+            int fd = close(file_descriptor);
+            
+            printf("Close result: %d\n", fd);
+            
+            char *result = (char *) malloc(sizeof(char) * 30);
+            memset(result, 0, 30);
+            
+            if (fd == -1) {
+                snprintf(result, 30, "%d,%d", fd, errno);
+            } else {
+                snprintf(result, 30, "%d,0", fd);
+            }
+            
+            write(client_fd, result, 30);
+            return NULL;
 
 		} else if (strcmp(op_type, "create") == 0) {
             /* create
