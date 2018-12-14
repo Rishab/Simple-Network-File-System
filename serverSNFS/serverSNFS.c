@@ -526,16 +526,29 @@ void *client_handler(void *arg)
 			// the permissions to open the directory in.
 			printf("Got a mkdir request\n");
 
+			//retrieve the path name and the mode that the directory should be created in
 			char* path = strtok(NULL, ",");
 			int dirmode = atoi(strtok(NULL, ","));
-			printf("path: %s\ndirmode: %04o\n", path, dirmode);
+			char * absolute_path = strcat_dynamic(mount_path, path, 0);
+			printf("path: %s\ndirmode: %04o\n", absolute_path, dirmode);
 
-			int return_code = mkdir(path, dirmode);
+			//attempt to make a directory with the file path and the mode of the path
+			int result_code = mkdir(absolute_path, dirmode);
+			printf("return_code: %d\n", result_code);
+			printf("errno: %d\n", errno);
+	
+			//
+            char *result = (char *) malloc(sizeof(char) * 30);
+            memset(result, 0, 30);
 
-			char *ret_str = ((char *) malloc(20));
-			memset(ret_str, 0, 20);
-			snprintf(ret_str, 20, "%d", return_code);
-			write(client_fd, ret_str, 20);
+            if (result_code == 0) {
+                snprintf(result, 30, "%d,0", result_code);
+            } else {
+                snprintf(result, 30, "%d,%d", result_code, errno);
+            }
+			printf("%s\n", result);
+			write(client_fd, result, 30);
+            return NULL;
 
 		} else if (strcmp(op_type, "opendir") == 0) {
 			// opendir() takes one additional argument: the directory name.
@@ -594,6 +607,8 @@ void *client_handler(void *arg)
 			ret_str = readdir_handle_string(absolute_path, stream_len, num_entries);
 			printf("Writing the readdir request to the client: %s\n", ret_str);
 			write(client_fd, ret_str, num_entries+stream_len);
+		
+			return NULL;
 
 		} else if (strcmp(op_type, "releasedir") == 0) {
 			// releasedir() takes one additional argument: the directory name.
@@ -602,13 +617,20 @@ void *client_handler(void *arg)
 			char* path = strtok(NULL, ",");
 			printf("path: %s\n", path);
 
-			int return_code = rmdir(path);
+			int result_code = closedir(path);
+			char *result = (char *) malloc(sizeof(char) * 30);
+            memset(result, 0, 30);
+			
+			printf("Code returned by server is: %d\n", result_code);
+			if (result_code == 0) {
+                snprintf(result, 30, "%d,0", result_code);
+            } else {
+                snprintf(result, 30, "%d,%d", result_code, errno);
+            }
+            
+            write(client_fd, result, 30); 
 
-			char *ret_str = ((char*) malloc(20));
-			memset(ret_str, 0, 20);
-			snprintf(ret_str, 20, "%d", return_code);
-			write(client_fd, ret_str, 20);
-
+			return NULL;
 		}
 
 		/*

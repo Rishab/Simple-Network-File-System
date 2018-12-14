@@ -23,7 +23,7 @@
 
 static int fasten() {
 	printf("Attempting to fasten to the server\n");
-	int port = 16269;
+	int port = 16275;
 	const char * hostname = "rm.cs.rutgers.edu";
 	struct sockaddr_in address;
 	int sock = 0;
@@ -325,18 +325,20 @@ static int snfs_write(const char * path, const char * buffer, size_t size, off_t
     return result_code;
 }
 
-/*
+
 
 static int snfs_flush(const char * path, struct fuse_file_info * fi) {
 	//called on each close; write back data and return errors
+	printf("Making a flush request\n");
 	return 0;
 }
 
 static int snfs_release(const char * path, struct fuse_file_info * fi) {
-	return 0;erver_ip->h_a
+	printf("Making a release request\n");
+	return 0;
 }
 
-*/
+
 
 /* create
  * Request form: <msg_len>,create,<path>,<flags>,<filemodes>
@@ -379,39 +381,36 @@ static int snfs_create(const char * path, mode_t filemodes, struct fuse_file_inf
 }
 
 
-/*
-
 static int snfs_mkdir(const char * path, mode_t dirmode) {
+	int server_fd = fasten();
 	int msg_size = strlen(path) + sizeof(mode_t) + 60;
     char *message = (char *) malloc(sizeof(char) * msg_size);
     memset(message, 0, msg_size);
 	snprintf(message, msg_size, "%d,mkdir,%s,%d", msg_size, path, (int) dirmode);
+	printf("Writing: %s to the server\n", message);
     write(server_fd, message, msg_size);
 
-    	char *result = (char *) malloc(sizeof(char) * 20);
-    	memset(result, 0, 20);
-    	read(server_fd, result, 20);
+    char *result = (char *) malloc(sizeof(char) * 30);
+    memset(result, 0, 30);
+    read(server_fd, result, 30);
+    printf("String returned from the server: %s\n", result);
 
-	int server_return_code = atoi(result);
-    	if (server_return_code < 0) {
-        	perror("Server error on write\n");
-        	return server_return_code;
-    	}
-
-	//write on server was successful; write on client
-	int client_return_code = mkdir(path, dirmode);
-
-	if (client_return_code < 0) {
-        	printf("WARNING: Consistency error on mkdir. Success on server but failure on client\n");
-    	}
+	int result_code = atoi(strtok(result, ","));
+    if (result_code == -1) {
+        errno = atoi(strtok(NULL, ","));
+        printf("The value of errno is: %d\n", errno);
+        return -errno;
+    }
 
 	return 0;
 }
 
+
 static int snfs_opendir(const char * path, struct fuse_file_info * fi) {
 	//check if opendir is permitted?
 	//should return the DIR pointer to fuse_file_info?
-	int size = strlen(path) + 30;
+	printf("Making an opendir request\n");
+	/*int size = strlen(path) + 30;
 	char *message = (char *) malloc(sizeof(char) * (strlen(path) + 30));
 	memset(message, 0, strlen(path) + 30);
 	snprintf(message, size, "%d,opendir,%s", strlen(path)+30, path);
@@ -420,11 +419,10 @@ static int snfs_opendir(const char * path, struct fuse_file_info * fi) {
 	char *result = (char *) malloc(sizeof(char) * 100);
 	memset(result, 0, 100);
 	read(server_fd, result, 100);
-	printf("%d\n");
+	printf("%d\n");*/
 	return 0;
 }
 
-*/
 
 static int snfs_readdir(const char * path, void * buffer,
 	fuse_fill_dir_t filler, off_t offset,
@@ -455,7 +453,7 @@ static int snfs_readdir(const char * path, void * buffer,
 	//convert the client files and names to ints
 	int stream_len = atoi(num_bytes_to_read);
 	int num_entries = atoi(num_entries_str);
-	printf("The client needs to read in a buffer of: %d contianed %d files\n", stream_len, num_entries);
+	printf("The client needs to read in a buffer of: %d contianed in %d files\n", stream_len, num_entries);
 	
 	//prepare to read the from the server the buffer
 	int result_len = stream_len + num_entries;
@@ -484,42 +482,42 @@ static int snfs_readdir(const char * path, void * buffer,
 
 
 static int snfs_releasedir(const char * path, struct fuse_file_info * fi) {
-	printf("relesadir called\n");
-/*
-	int msg_size = strlen(path) + 60;
-    	char *message = (char *) malloc(sizeof(char) * msg_size);
-    	memset(message, 0, msg_size);
+	printf("releasedir called\n");
+	int server_fd = fasten();
+	int msg_size = strlen(path) + sizeof(mode_t) + 60;
+    char *message = (char *) malloc(sizeof(char) * msg_size);
+    memset(message, 0, msg_size);
 	snprintf(message, msg_size, "%d,releasedir,%s", msg_size, path);
-    	write(server_fd, message, msg_size);
+	printf("Writing: %s to the server\n", message);
+    write(server_fd, message, msg_size);
 
-    	char *result = (char *) malloc(sizeof(char) * 20);
-    	memset(result, 0, 20);
-    	read(server_fd, result, 20);
+    char *result = (char *) malloc(sizeof(char) * 30);
+    memset(result, 0, 30);
+    read(server_fd, result, 30);
+    printf("String returned from the server: %s\n", result);
 
-	int server_return_code = atoi(result);
-    	if (server_return_code < 0) {
-        	perror("Server error on releasedir\n");
-        	return server_return_code;
-    	}
-
-	//releasedir on server was successful; releasedir (rmdir) on client
-	int client_return_code = rmdir(path);
-
-	if (client_return_code < 0) {
-        	printf("WARNING: Consistency error on releasedir. Success on server but failure on client\n");
-    	}
-*/
+	int result_code = atoi(strtok(result, ","));
+    if (result_code == -1) {
+        errno = atoi(strtok(NULL, ","));
+        printf("The value of errno is: %d\n", errno);
+        return -errno;
+    }
 	return 0;
 }
 
 static struct fuse_operations operations = {
-    .getattr  = snfs_getattr,
-    .readdir  = snfs_readdir,
-    .truncate = snfs_truncate,
-    .open     = snfs_open,
-    .read     = snfs_read,
-    .create   = snfs_create,
-    .write    = snfs_write
+    .getattr  	= snfs_getattr,
+    .readdir  	= snfs_readdir,
+    .truncate 	= snfs_truncate,
+    .open     	= snfs_open,
+    .read     	= snfs_read,
+    .create   	= snfs_create,
+    .write    	= snfs_write,
+    .mkdir	  	= snfs_mkdir,
+    .releasedir = snfs_releasedir,
+    .release	= snfs_release,
+    .flush		= snfs_flush,
+    .opendir	= snfs_opendir
 };
 
 int main(int argc, char **argv)
